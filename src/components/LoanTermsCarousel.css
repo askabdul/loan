@@ -1,0 +1,248 @@
+/* Loan Terms Carousel Styles */
+.loan-terms-carousel-container {
+  position: relative;
+  width: 100%;
+}
+
+.loan-terms-carousel {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  padding: 8px 4px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.loan-terms-carousel::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
+.loan-term-card {
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 160px;
+  background: #ffffff;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  user-select: none;
+}
+
+.loan-term-card:hover {
+  border-color: #28a745;
+  box-shadow: 0 4px 8px rgba(40, 167, 69, 0.15);
+  transform: translateY(-2px);
+}
+
+.loan-term-card.selected {
+  border-color: #28a745;
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  box-shadow: 0 6px 12px rgba(40, 167, 69, 0.25);
+  transform: translateY(-1px);
+}
+
+.term-duration {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+.loan-term-card.selected .term-duration {
+  color: white;
+}
+
+.term-details {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.term-interest {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 2px;
+}
+
+.loan-term-card.selected .term-interest {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.term-fee {
+  color: #6c757d;
+  font-size: 10px;
+}
+
+.loan-term-card.selected .term-fee {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Scroll buttons */
+.carousel-scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  color: #495057;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 2;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-scroll-btn:hover {
+  background: #28a745;
+  color: white;
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.carousel-scroll-left {
+  left: -8px;
+}
+
+.carousel-scroll-right {
+  right: -8px;
+}
+
+/* Mobile optimizations */
+@media (max-width: 576px) {
+  .loan-terms-carousel {
+    gap: 8px;
+    padding: 6px 2px;
+  }
+  
+  .loan-term-card {
+    min-width: 120px;
+    max-width: 140px;
+    padding: 12px 8px;
+  }
+  
+  .term-duration {
+    font-size: 14px;
+  }
+  
+  .term-details {
+    font-size: 10px;
+  }
+  
+  .term-fee {
+    font-size: 9px;
+  }
+  
+  .carousel-scroll-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+  
+  .carousel-scroll-left {
+    left: -6px;
+  }
+  
+  .carousel-scroll-right {
+    right: -6px;
+  }
+}
+
+/* Touch scroll indicators for mobile */
+@media (max-width: 768px) {
+  .loan-terms-carousel {
+    /* Enable momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Hide scroll buttons on very small screens to save space */
+  @media (max-width: 480px) {
+    .carousel-scroll-btn {
+      display: none;
+    }
+  }
+}
+
+/* Animation for new terms loading */
+.loan-term-card {
+  animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading state */
+.loan-terms-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+}
+
+/* Error state */
+.loan-terms-error {
+  text-align: center;
+  padding: 20px;
+  color: #dc3545;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+/* Accessibility improvements */
+.loan-term-card:focus {
+  outline: 2px solid #28a745;
+  outline-offset: 2px;
+}
+
+.carousel-scroll-btn:focus {
+  outline: 2px solid #28a745;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .loan-term-card {
+    border-width: 3px;
+  }
+  
+  .loan-term-card.selected {
+    border-color: #000;
+    background: #000;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .loan-term-card,
+  .carousel-scroll-btn {
+    transition: none;
+  }
+  
+  .loan-terms-carousel {
+    scroll-behavior: auto;
+  }
+  
+  .loan-term-card {
+    animation: none;
+  }
+}

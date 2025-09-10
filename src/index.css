@@ -1,0 +1,445 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+/* Prevent page-level scrolling */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Custom CEDI Colors */
+:root {
+  --cedi-blue: #f5f5f5;
+  --cedi-gold: #f5b769;
+  --cedi-light: #E6F0FF;
+  --cedi-dark: #ffffff;
+  --cedi-shadow: rgba(158, 181, 213, 0.3);
+}
+
+/* CEDI Custom Styles */
+.cedi-gradient {
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-dark) 100%);
+}
+
+.cedi-gradient-gold {
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-gold) 100%);
+}
+
+.cedi-shadow {
+  box-shadow: 0 4px 15px var(--cedi-shadow);
+}
+
+.cedi-text-blue {
+  color: var(--cedi-blue);
+}
+
+.cedi-text-gold {
+  color: var(--cedi-gold);
+}
+
+.cedi-text-dark {
+  color: var(--cedi-dark);
+}
+
+.cedi-bg-light {
+  background-color: var(--cedi-light);
+}
+
+.cedi-border {
+  border-color: var(--cedi-blue);
+}
+
+.cedi-btn {
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-gold) 100%);
+  border: none;
+  color: white;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.cedi-btn:hover {
+  background: linear-gradient(135deg, var(--cedi-dark) 0%, var(--cedi-blue) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--cedi-shadow);
+}
+
+/* Add spinning animation for loading icon */
+.bi-arrow-clockwise.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Bootstrap Icons Input Group Styling */
+.input-group-text {
+  border-radius: 12px 0 0 12px !important;
+  padding: 12px 16px !important;
+  background-color: #f8f9fa !important;
+  border: 1px solid #dee2e6 !important;
+  color: #6c757d;
+}
+
+/* Mobile first approach - container for app */
+.app-container {
+  max-width: 480px;
+  margin: 0 auto;
+  background-color: white;
+  height: 100vh;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Page container for protected routes with bottom navigation */
+.page-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-container > *:first-child {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 80px; /* Space for bottom navigation */
+}
+
+.page-container > *:last-child {
+  flex-shrink: 0;
+}
+
+/* Form styles */
+.form-container {
+  padding: 1rem;
+}
+
+.form-header {
+  background-color: #1e3a8a;
+  color: white;
+  padding: 1rem;
+  text-align: center;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+}
+
+/* Navigation */
+.bottom-nav {
+  display: flex;
+  justify-content: space-around;
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  max-width: 480px;
+  background-color: white;
+  border-top: 1px solid #e5e7eb;
+  padding: 0.75rem 0;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.nav-item.active {
+  color: #1e8a71;
+}
+
+/* CEDI Registration Pages Styles */
+.cedi-bg-gradient {
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-dark) 100%);
+  min-height: 100vh;
+}
+
+.cedi-page-background {
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-dark) 100%);
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.cedi-card {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 71, 171, 0.2);
+  border: none;
+  overflow: hidden;
+}
+
+.cedi-logo-container {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-gold) 100%);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cedi-logo-badge {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-gold) 100%);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cedi-logo-text {
+  color: white;
+  font-weight: bold;
+  font-size: 1.25rem;
+}
+
+.cedi-title {
+  color: var(--cedi-dark);
+  font-weight: bold;
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.cedi-phone-display {
+  color: var(--cedi-blue);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.cedi-form-input {
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background-color: #f8f9fa;
+}
+
+.cedi-form-input:focus {
+  border-color: var(--cedi-blue);
+  box-shadow: 0 0 0 0.2rem rgba(0, 71, 171, 0.25);
+  background-color: white;
+  outline: none;
+}
+
+.cedi-form-input.is-invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+.cedi-otp-input {
+  width: 50px;
+  height: 50px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-align: center;
+  transition: all 0.3s ease;
+  background-color: #f8f9fa;
+}
+
+.cedi-otp-input:focus {
+  border-color: var(--cedi-blue);
+  box-shadow: 0 0 0 0.2rem rgba(0, 71, 171, 0.25);
+  background-color: white;
+  outline: none;
+}
+
+.cedi-pin-input {
+  width: 60px;
+  height: 60px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-align: center;
+  transition: all 0.3s ease;
+  background-color: #f8f9fa;
+}
+
+.cedi-pin-input:focus {
+  border-color: var(--cedi-blue);
+  box-shadow: 0 0 0 0.2rem rgba(0, 71, 171, 0.25);
+  background-color: white;
+  outline: none;
+}
+
+.cedi-btn-primary {
+  background: linear-gradient(135deg, var(--cedi-blue) 0%, var(--cedi-gold) 100%);
+  border: none;
+  color: white;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  text-transform: none;
+}
+
+.cedi-btn-primary:hover {
+  background: linear-gradient(135deg, var(--cedi-dark) 0%, var(--cedi-blue) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 71, 171, 0.3);
+  color: white;
+}
+
+.cedi-btn-primary:focus {
+  box-shadow: 0 0 0 0.2rem rgba(0, 71, 171, 0.25);
+  color: white;
+}
+
+.cedi-link-btn {
+  color: var(--cedi-blue);
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.cedi-link-btn:hover {
+  color: var(--cedi-dark);
+  text-decoration: underline;
+}
+
+.cedi-secondary-link {
+  color: #6c757d;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.cedi-secondary-link:hover {
+  color: var(--cedi-blue);
+  text-decoration: underline;
+}
+
+.cedi-checkbox {
+  accent-color: var(--cedi-blue);
+  transform: scale(1.2);
+}
+
+.cedi-info-box {
+  background-color: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.border-cedi-light {
+  border-color: var(--cedi-light) !important;
+}
+
+/* Tailwind-like utilities for CEDI colors */
+.from-cedi-blue {
+  --tw-gradient-from: var(--cedi-blue);
+}
+
+.to-cedi-dark {
+  --tw-gradient-to: var(--cedi-dark);
+}
+
+.to-cedi-gold {
+  --tw-gradient-to: var(--cedi-gold);
+}
+
+.bg-gradient-to-br {
+  background-image: linear-gradient(to bottom right, var(--tw-gradient-from), var(--tw-gradient-to));
+}
+
+.bg-gradient-to-r {
+  background-image: linear-gradient(to right, var(--tw-gradient-from), var(--tw-gradient-to));
+}
+
+.text-cedi-blue {
+  color: var(--cedi-blue);
+}
+
+.text-cedi-dark {
+  color: var(--cedi-dark);
+}
+
+.text-cedi-gold {
+  color: var(--cedi-gold);
+}
+
+.border-cedi-blue {
+  border-color: var(--cedi-blue);
+}
+
+.border-cedi-light {
+  border-color: var(--cedi-light);
+}
+
+.focus\:ring-cedi-blue:focus {
+  --tw-ring-color: rgba(0, 71, 171, 0.5);
+  box-shadow: 0 0 0 3px var(--tw-ring-color);
+}
+
+.focus\:border-cedi-blue:focus {
+  border-color: var(--cedi-blue);
+}
+
+.hover\:from-cedi-dark:hover {
+  --tw-gradient-from: var(--cedi-dark);
+}
+
+.hover\:to-cedi-blue:hover {
+  --tw-gradient-to: var(--cedi-blue);
+}
+
+.hover\:text-cedi-dark:hover {
+  color: var(--cedi-dark);
+}
+
+.shadow-cedi {
+  box-shadow: 0 10px 30px rgba(0, 71, 171, 0.2);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .cedi-card {
+    margin: 0.5rem;
+    border-radius: 16px;
+  }
+  
+  .cedi-title {
+    font-size: 1.75rem;
+  }
+  
+  .cedi-otp-input {
+    width: 45px;
+    height: 45px;
+    font-size: 1.25rem;
+  }
+  
+  .cedi-pin-input {
+    width: 50px;
+    height: 50px;
+    font-size: 1.25rem;
+  }
+}

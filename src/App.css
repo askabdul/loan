@@ -1,0 +1,490 @@
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* App Container - Mobile First */
+.app-container {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+.page-container {
+  padding-bottom: 90px; /* Increased space for bottom navigation */
+  min-height: calc(100vh - 90px);
+}
+
+/* Mobile-first container adjustments */
+.container {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  max-width: 100% !important;
+}
+
+/* Ensure content doesn't overflow on small screens */
+body {
+  overflow-x: hidden;
+}
+
+/* Mobile viewport adjustments */
+@media (max-width: 576px) {
+  .container {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  
+  .page-container {
+    padding-bottom: 100px; /* Extra space on mobile for better accessibility */
+  }
+  
+  /* Extra margin for bottom buttons on mobile */
+  .btn-custom, .d-grid {
+    margin-bottom: 20px !important;
+  }
+  
+  /* Specific styling for action buttons at page bottom */
+  .page-bottom-actions {
+    margin-bottom: 30px !important;
+    padding-bottom: 20px !important;
+  }
+}
+
+/* Bottom Navigation Styles - Mobile First */
+.bottom-navigation {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 4px 0 6px 0;
+  box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.08);
+  z-index: 1000;
+  height: 60px;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  min-width: 50px;
+  flex: 1;
+  max-width: 80px;
+}
+
+.nav-item:hover {
+  background-color: #f8f9fa;
+}
+
+.nav-item.active {
+  color: #007bff;
+  background-color: #e7f3ff;
+}
+
+.nav-icon {
+  font-size: 18px;
+  margin-bottom: 2px;
+  line-height: 1;
+}
+
+.nav-label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* Responsive adjustments */
+@media (min-width: 768px) {
+  .bottom-navigation {
+    padding: 6px 0 8px 0;
+    height: 65px;
+  }
+  
+  .nav-item {
+    padding: 6px 10px;
+    min-width: 60px;
+  }
+  
+  .nav-icon {
+    font-size: 20px;
+    margin-bottom: 3px;
+  }
+  
+  .nav-label {
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .bottom-navigation {
+    padding: 8px 0;
+    height: 70px;
+  }
+  
+  .nav-item {
+    padding: 8px 12px;
+    min-width: 70px;
+  }
+  
+  .nav-icon {
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  
+  .nav-label {
+    font-size: 12px;
+  }
+}
+
+/* Page Styles - Mobile First */
+.page-header {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  padding: 12px 16px 16px 16px;
+  margin: -12px -12px 16px -12px;
+  border-radius: 0 0 16px 16px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  opacity: 0.9;
+  margin: 4px 0 0 0;
+  line-height: 1.3;
+}
+
+/* Mobile adjustments for page header */
+@media (max-width: 576px) {
+  .page-header {
+    padding: 10px 12px 14px 12px;
+    margin: -8px -8px 12px -8px;
+    border-radius: 0 0 12px 12px;
+  }
+  
+  .page-title {
+    font-size: 18px;
+  }
+  
+  .page-subtitle {
+    font-size: 12px;
+  }
+}
+
+/* Tablet and desktop adjustments */
+@media (min-width: 768px) {
+  .page-header {
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 0 0 20px 20px;
+  }
+  
+  .page-title {
+    font-size: 24px;
+  }
+  
+  .page-subtitle {
+    font-size: 14px;
+    margin: 5px 0 0 0;
+  }
+}
+
+/* Card Styles - Mobile First */
+.custom-card {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 12px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.custom-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.custom-card .card-body {
+  padding: 16px;
+}
+
+/* Button Styles - Mobile First */
+.btn-custom {
+  border-radius: 20px;
+  padding: 10px 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.btn-custom:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+/* Mobile adjustments for cards and buttons */
+@media (max-width: 576px) {
+  .custom-card {
+    border-radius: 10px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+  }
+  
+  .custom-card .card-body {
+    padding: 12px;
+  }
+  
+  .btn-custom {
+    border-radius: 16px;
+    padding: 8px 16px;
+    font-size: 13px;
+    letter-spacing: 0.2px;
+  }
+}
+
+/* Tablet and desktop adjustments */
+@media (min-width: 768px) {
+  .custom-card {
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+  }
+  
+  .custom-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  }
+  
+  .custom-card .card-body {
+    padding: 25px;
+  }
+  
+  .btn-custom {
+    border-radius: 25px;
+    padding: 12px 30px;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+  }
+  
+  .btn-custom:hover {
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Form Styles */
+.form-control {
+  border-radius: 10px;
+  border: 2px solid #e0e0e0;
+  padding: 12px 15px;
+  transition: border-color 0.3s ease;
+}
+
+.form-control:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Status Badges */
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-completed {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-pending {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.status-failed {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+/* Form Container Styles for Registration Pages */
+.form-container {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 71, 171, 0.2);
+}
+
+.form-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.form-header h1 {
+  color: var(--cedi-dark, #00264D);
+  font-weight: bold;
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--cedi-dark, #00264D);
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background-color: #f8f9fa;
+}
+
+.form-input:focus {
+  border-color: var(--cedi-blue, #0047AB);
+  box-shadow: 0 0 0 0.2rem rgba(0, 71, 171, 0.25);
+  background-color: white;
+  outline: none;
+}
+
+/* Enhanced button styles */
+.btn-primary {
+  background: linear-gradient(135deg, var(--cedi-blue, #0047AB) 0%, var(--cedi-gold, #FFD700) 100%);
+  border: none;
+  color: white;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  text-transform: none;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--cedi-dark, #00264D) 0%, var(--cedi-blue, #0047AB) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 71, 171, 0.3);
+  color: white;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 2px solid var(--cedi-blue, #0047AB);
+  color: var(--cedi-blue, #0047AB);
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 10px 22px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--cedi-blue, #0047AB);
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Error message styling */
+.text-red-500 {
+  color: #dc3545;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Success message styling */
+.text-green-500 {
+  color: #28a745;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Loading state */
+.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .page-container {
+    padding: 10px;
+  }
+  
+  .custom-card .card-body {
+    padding: 20px;
+  }
+  
+  .page-title {
+    font-size: 20px;
+  }
+  
+  .form-container {
+    margin: 1rem;
+    padding: 1.5rem;
+    border-radius: 16px;
+  }
+  
+  .form-header h1 {
+    font-size: 1.75rem;
+  }
+}
