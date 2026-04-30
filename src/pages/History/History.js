@@ -28,6 +28,8 @@ const History = () => {
         
         // Add loan transactions
         loans.forEach(loan => {
+          const months = loan.duration || (loan.termInDays ? Math.ceil(loan.termInDays / 30) : null);
+          const termText = months ? `${months} month(s)` : (loan.termInDays ? `${loan.termInDays} day(s)` : 'Term not specified');
           allTransactions.push({
             id: loan._id, // Use MongoDB _id for loan extension routing
             loanId: loan.loanId, // Keep loanId for display purposes
@@ -35,8 +37,9 @@ const History = () => {
             amount: loan.amount,
             currency: 'GHS',
             status: loan.status,
+            isOverdue: !!loan.isOverdue,
             date: new Date(loan.applicationDate || loan.createdAt),
-            description: `Loan Application - ${loan.duration} month(s) (ID: ${loan.loanId})`
+            description: `Loan Application - ${termText} (ID: ${loan.loanId || 'N/A'})`
           });
         });
         
@@ -151,16 +154,16 @@ const History = () => {
   };
 
   return (
-    <div className="container mt-4">
-      <div className="page-header">
+    <div className="max-w-xl mx-auto px-4 mt-4">
+      <div className="page-header mb-4">
         <button 
-          className="btn btn-outline-light btn-sm mb-3"
+          className="mb-3 inline-flex items-center rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
           onClick={() => navigate('/home')}
         >
           ← Back
         </button>
-        <h1 className="page-title">Transaction History</h1>
-        <p className="page-subtitle">View all your loan transactions</p>
+        <h1 className="page-title text-xl font-semibold">Transaction History</h1>
+        <p className="page-subtitle text-gray-500">View all your loan transactions</p>
       </div>
 
       {isLoading ? (
@@ -174,23 +177,23 @@ const History = () => {
         <div className="row">
           {transactions.map(transaction => (
             <div key={transaction.id} className="col-12 mb-3">
-              <div className="card custom-card">
-                <div className="card-body">
-                  <div className="d-flex justify-content-between align-items-start mb-3">
-                    <div className="d-flex align-items-center">
-                      <div className="me-3">
+              <div className="bg-white shadow rounded-lg">
+                <div className="p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center">
+                      <div className="mr-3">
                         {transaction.type === 'loan' ? (
-                          <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center" style={{width: '40px', height: '40px'}}>
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-600 text-white">
                             💰
                           </div>
                         ) : (
-                          <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style={{width: '40px', height: '40px'}}>
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white">
                             💸
                           </div>
                         )}
                       </div>
                       <div>
-                        <h6 className="card-title mb-1">
+                        <h6 className="text-base font-semibold mb-1">
                           {transaction.type === 'loan' ? 'Loan' : 'Repayment'}
                         </h6>
                         <span className={`status-badge status-${transaction.status}`}>
@@ -199,29 +202,41 @@ const History = () => {
                       </div>
                     </div>
                     <div className="text-end">
-                      <div className={`fs-5 fw-bold ${transaction.type === 'loan' ? 'text-success' : 'text-primary'}`}>
+                      <div className={`text-lg font-bold ${transaction.type === 'loan' ? 'text-green-600' : 'text-blue-600'}`}>
                         {transaction.type === 'repayment' ? '-' : '+'} {transaction.currency} {transaction.amount.toFixed(2)}
                       </div>
                     </div>
                   </div>
                   
-                  <div className="row">
-                    <div className="col-8">
-                      <p className="card-text text-muted mb-1">{transaction.description}</p>
+                  <div className="grid grid-cols-12">
+                    <div className="col-span-8">
+                      <p className="text-gray-600 mb-1">{transaction.description}</p>
                     </div>
-                    <div className="col-4 text-end">
-                      <small className="text-muted">{formatDate(transaction.date)}</small>
+                    <div className="col-span-4 text-right">
+                      <small className="text-gray-500">{formatDate(transaction.date)}</small>
                     </div>
                   </div>
                   
                   {/* Show Extend Loan button for active loans */}
-                  {transaction.type === 'loan' && transaction.status === 'active' && (
+                  {transaction.type === 'loan' && transaction.status === 'active' && !transaction.isOverdue && (
                     <div className="mt-3 pt-3 border-top">
                       <button 
-                        className="btn btn-outline-primary btn-sm"
+                        className="inline-flex items-center rounded border border-blue-500 text-blue-600 hover:bg-blue-50 px-3 py-1.5 text-sm"
                         onClick={() => navigate(`/loan-extension/${transaction.id}`)}
                       >
                         📅 Extend Loan
+                      </button>
+                    </div>
+                  )}
+                  
+                  {/* Show Repayment button for active or overdue loans */}
+                  {transaction.type === 'loan' && (transaction.status === 'active' || transaction.status === 'overdue') && (
+                    <div className="mt-3">
+                      <button 
+                        className="inline-flex items-center rounded border border-green-500 text-green-600 hover:bg-green-50 px-3 py-1.5 text-sm"
+                        onClick={() => navigate('/apply')}
+                      >
+                        💳 Make Repayment
                       </button>
                     </div>
                   )}
@@ -232,16 +247,16 @@ const History = () => {
         </div>
       ) : (
         <div className="text-center py-5">
-          <div className="card custom-card">
-            <div className="card-body">
+          <div className="bg-white shadow rounded-lg">
+            <div className="p-6">
               <div className="mb-4">
-                <div className="display-1 text-muted">📜</div>
+                <div className="text-5xl text-gray-400">📜</div>
               </div>
-              <h4 className="card-title text-muted">No Transaction History</h4>
-              <p className="card-text text-muted mb-4">You haven't made any transactions yet. Start by applying for your first loan!</p>
+              <h4 className="text-lg font-semibold text-gray-600">No Transaction History</h4>
+              <p className="text-gray-500 mb-4">You haven't made any transactions yet. Start by applying for your first loan!</p>
               <div className="page-bottom-actions">
                 <button 
-                  className="btn btn-primary btn-lg btn-custom"
+                  className="inline-flex items-center rounded bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-base font-medium w-full max-w-xs mx-auto"
                   onClick={() => navigate('/apply')}
                 >
                   🚀 Apply for a Loan

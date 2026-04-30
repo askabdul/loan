@@ -724,9 +724,9 @@ const LoanApplication = () => {
     console.log('🔥🔥🔥 HANDLESUBMIT FUNCTION CALLED!');
     e.preventDefault();
     
-    // Check if there's already an active loan to prevent duplicate submissions
-    if (activeLoan && ['pending', 'under-review', 'approved', 'disbursed', 'active'].includes(activeLoan.status)) {
-      showToast('❌ You already have an active loan application. Please complete or wait for your current loan to be processed.', 'error');
+    // Prevent applying when there is an outstanding loan (including overdue)
+    if (activeLoan && ['pending', 'under-review', 'approved', 'disbursed', 'active', 'overdue'].includes(activeLoan.status)) {
+      showToast('❌ You have an outstanding loan. Please complete your current loan before applying again.', 'error');
       return;
     }
     
@@ -895,16 +895,16 @@ const LoanApplication = () => {
   
   // Main loan application form (when no active loan)
   const renderLoanApplicationForm = () => (
-    <div className="container mt-4">
-      <div className="page-header">
+    <div className="max-w-xl mx-auto px-4 mt-4">
+      <div className="page-header mb-4">
         <button 
-          className="btn btn-outline-light btn-sm mb-3"
+          className="mb-3 inline-flex items-center rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
           onClick={() => navigate('/home')}
         >
           ← Back
         </button>
-        <h1 className="page-title">Apply for a Loan</h1>
-        <p className="page-subtitle">
+        <h1 className="page-title text-xl font-semibold">Apply for a Loan</h1>
+        <p className="page-subtitle text-gray-500">
           {currentLevel ? (
             <>Get instant loans from GHS {minAmount.toLocaleString()} to GHS {maxAmount.toLocaleString()} - {currentLevel.name} Level</>
           ) : (
@@ -919,11 +919,11 @@ const LoanApplication = () => {
           console.log('🔥🔥🔥 About to call handleSubmit...');
           handleSubmit(e);
         }}>
-        <div className="card custom-card">
-          <div className="card-body">
-            <h3 className="card-title text-primary mb-4">💰 Loan Amount</h3>
+        <div className="bg-white shadow rounded-lg">
+          <div className="p-4">
+            <h3 className="text-blue-600 font-semibold mb-4">💰 Loan Amount</h3>
             <div className="text-center mb-4">
-              <div className="display-4 text-primary fw-bold">GHS {loanAmount.toFixed(2)}</div>
+              <div className="text-3xl text-blue-600 font-bold">GHS {loanAmount.toFixed(2)}</div>
             </div>
             
             <div className="mb-4">
@@ -937,13 +937,13 @@ const LoanApplication = () => {
                 className="form-range"
                 disabled={!currentLevel}
               />
-              <div className="d-flex justify-content-between mt-2">
-                <small className="text-muted">GHS {minAmount.toLocaleString()}</small>
-                <small className="text-muted">GHS {maxAmount.toLocaleString()}</small>
+              <div className="flex justify-between mt-2">
+                <small className="text-gray-500">GHS {minAmount.toLocaleString()}</small>
+                <small className="text-gray-500">GHS {maxAmount.toLocaleString()}</small>
               </div>
               {currentLevel && (
                 <div className="text-center mt-2">
-                  <small className="badge bg-primary">{currentLevel.name} Level</small>
+                  <small className="inline-block rounded bg-blue-600 text-white px-2 py-0.5 text-xs">{currentLevel.name} Level</small>
                 </div>
               )}
             </div>
@@ -966,17 +966,17 @@ const LoanApplication = () => {
         
         {/* Loan Level Information */}
         {userLevelInfo && (
-          <div className="card custom-card">
-            <div className="card-body">
-              <h3 className="card-title text-warning mb-4">🏆 Your Loan Level</h3>
+          <div className="bg-white shadow rounded-lg">
+            <div className="p-4">
+              <h3 className="text-amber-500 font-semibold mb-4">🏆 Your Loan Level</h3>
               <div className="row mb-3">
                 <div className="col-md-6">
-                  <div className="text-center p-3 bg-light rounded">
-                    <h5 className="text-primary mb-1">{currentLevel?.name}</h5>
-                    <small className="text-muted">Level {currentLevel?.levelNumber}</small>
+                  <div className="text-center p-3 bg-gray-50 rounded">
+                    <h5 className="text-blue-600 mb-1">{currentLevel?.name}</h5>
+                    <small className="text-gray-500">Level {currentLevel?.levelNumber}</small>
                     <div className="mt-2">
-                      <small className="d-block">Loan Range: GHS {currentLevel?.minAmount?.toLocaleString()} - GHS {currentLevel?.maxAmount?.toLocaleString()}</small>
-                      <small className="d-block">Interest Rate: {currentLevel?.interestRate}%</small>
+                      <small className="block">Loan Range: GHS {currentLevel?.minAmount?.toLocaleString()} - GHS {currentLevel?.maxAmount?.toLocaleString()}</small>
+                      <small className="block">Interest Rate: {currentLevel?.interestRate}%</small>
                     </div>
                   </div>
                 </div>
@@ -984,20 +984,20 @@ const LoanApplication = () => {
                   <div className="p-3">
                     <h6 className="mb-2">Progress to Next Level:</h6>
                     <div className="mb-2">
-                      <small className="text-muted">Loans Completed: {userLevelInfo.totalLoansCompleted} / {currentLevel?.minLoansRequired || 'N/A'}</small>
-                      <div className="progress" style={{height: '6px'}}>
+                      <small className="text-gray-500">Loans Completed: {userLevelInfo.totalLoansCompleted} / {currentLevel?.minLoansRequired || 'N/A'}</small>
+                      <div className="w-full h-1 bg-gray-200 rounded">
                         <div 
-                          className="progress-bar bg-success" 
+                          className="h-1 bg-green-500 rounded" 
                           style={{width: `${Math.min(100, (userLevelInfo.totalLoansCompleted / (currentLevel?.minLoansRequired || 1)) * 100)}%`}}
                         ></div>
                       </div>
                     </div>
                     <div className="mb-2">
-                      <small className="text-muted">Amount Repaid: GHS {userLevelInfo.totalAmountRepaid?.toLocaleString() || '0'}</small>
+                      <small className="text-gray-500">Amount Repaid: GHS {userLevelInfo.totalAmountRepaid?.toLocaleString() || '0'}</small>
                     </div>
                     {userLevelInfo.canProgress && (
-                      <div className="alert alert-success py-2 px-3 mb-0">
-                        <small>🎉 Ready for next level!</small>
+                      <div className="py-2 px-3 mb-0 rounded bg-green-50 text-green-700">
+                        <small className="font-medium">🎉 Ready for next level!</small>
                       </div>
                     )}
                   </div>
@@ -1007,12 +1007,12 @@ const LoanApplication = () => {
           </div>
         )}
         
-        <div className="card custom-card">
-          <div className="card-body">
-            <h3 className="card-title text-info mb-4">📊 Loan Summary</h3>
+        <div className="bg-white shadow rounded-lg">
+          <div className="p-4">
+            <h3 className="text-cyan-600 font-semibold mb-4">📊 Loan Summary</h3>
             <div className="row mb-3">
               <div className="col-6">Loan Amount:</div>
-              <div className="col-6 text-end fw-bold">GHS {loanAmount.toFixed(2)}</div>
+              <div className="col-6 text-end font-bold">GHS {loanAmount.toFixed(2)}</div>
             </div>
             
             {/* Fee Breakdown */}
@@ -1054,8 +1054,8 @@ const LoanApplication = () => {
             
             <hr />
             <div className="row mb-3">
-              <div className="col-6 fw-bold text-primary">Total Repayment:</div>
-              <div className="col-6 text-end fw-bold text-primary fs-5">GHS {calculateTotalRepayment().toFixed(2)}</div>
+              <div className="col-6 font-bold text-blue-600">Total Repayment:</div>
+              <div className="col-6 text-end font-bold text-blue-600 text-lg">GHS {calculateTotalRepayment().toFixed(2)}</div>
             </div>
             
             <div className="alert alert-warning mt-3">
@@ -1146,7 +1146,7 @@ const LoanApplication = () => {
          
 
         
-        <div className="d-grid gap-2 mt-4 page-bottom-actions">
+        <div className="grid gap-2 mt-4 page-bottom-actions">
 
           
           {loanStatus === 'approved' ? (
@@ -1156,7 +1156,7 @@ const LoanApplication = () => {
                 Outstanding Balance: <strong>GHS {remainingBalance?.toFixed(2) || '0.00'}</strong>
               </div>
               <button 
-                className="btn btn-success btn-lg btn-custom" 
+                className="inline-flex items-center rounded bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-base font-medium w-full" 
                 onClick={handleMakePayment}
               >
                 💳 Make Payment
@@ -1188,7 +1188,7 @@ const LoanApplication = () => {
           ) : (
             <button 
                type="submit" 
-               className="btn btn-primary btn-lg btn-custom"
+               className="inline-flex items-center rounded bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-base font-medium w-full"
                disabled={isSubmitting || ['pending', 'under-review', 'under_review'].includes(loanStatus) || !termsAccepted || (activeLoan && ['pending', 'under-review', 'approved', 'disbursed', 'active'].includes(activeLoan.status))}
                onClick={() => {
                  console.log('🔥🔥🔥 SUBMIT BUTTON CLICKED!');
@@ -1381,7 +1381,7 @@ const LoanApplication = () => {
   console.log('🎨 Main render - isLoading:', isLoading, 'loanStatus:', loanStatus, 'activeLoan:', !!activeLoan);
   
   return (
-    <div className="container mt-4">
+    <div className="max-w-xl mx-auto px-4 mt-4">
       {renderLoanStatusScreen()}
     </div>
   );

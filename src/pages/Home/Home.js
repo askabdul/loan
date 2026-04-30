@@ -198,24 +198,23 @@ const Home = () => {
   };
 
   return (
-    <div className="container mt-4">
-      <div className="row">
-        <div className="col-12">
-          <div className="card">
-            <div className="card-body text-center">
-              <h2 className="card-title mb-4">Welcome{userProfile?.personalInfo?.firstName ? `, ${userProfile.personalInfo.firstName}` : (user?.firstName ? `, ${user.firstName}` : '')}</h2>
-              <p className="card-text mb-4">
+    <div className="max-w-xl mx-auto px-4 mt-4">
+      <div className="w-full">
+        <div className="bg-white shadow rounded-lg">
+          <div className="p-4 text-center">
+            <h2 className="text-2xl font-semibold mb-4">Welcome{userProfile?.personalInfo?.firstName ? `, ${userProfile.personalInfo.firstName}` : (user?.firstName ? `, ${user.firstName}` : '')}</h2>
+            <p className="text-gray-600 mb-4">
                 Your trusted partner for quick and easy loans
               </p>
               
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="card bg-primary text-white h-100">
-                    <div className="card-body d-flex flex-column justify-content-center">
-                      <h5 className="card-title">Apply for Loan</h5>
-                      <p className="card-text">Get instant loans up to GHS {(appConfig?.max_loan_amount || userStats.availableCredit || 5000).toLocaleString()}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="bg-blue-600 text-white h-full rounded-lg shadow">
+                    <div className="p-4 flex flex-col justify-center">
+                      <h5 className="text-lg font-semibold">Apply for Loan</h5>
+                      <p className="text-sm text-blue-100">Get instant loans up to GHS {(appConfig?.max_loan_amount || userStats.availableCredit || 5000).toLocaleString()}</p>
                       <button 
-                        className="btn btn-light btn-sm mt-auto"
+                        className="mt-auto inline-flex items-center rounded bg-white text-blue-600 hover:bg-blue-50 px-3 py-1.5 text-sm font-medium"
                         onClick={() => navigate('/apply')}
                       >
                         Apply Now
@@ -224,13 +223,13 @@ const Home = () => {
                   </div>
                 </div>
                 
-                <div className="col-6">
-                  <div className="card bg-success text-white h-100">
-                    <div className="card-body d-flex flex-column justify-content-center">
-                      <h5 className="card-title">Loan History</h5>
-                      <p className="card-text">View your loan transactions</p>
+                <div>
+                  <div className="bg-green-600 text-white h-full rounded-lg shadow">
+                    <div className="p-4 flex flex-col justify-center">
+                      <h5 className="text-lg font-semibold">Loan History</h5>
+                      <p className="text-sm text-green-100">View your loan transactions</p>
                       <button 
-                        className="btn btn-light btn-sm mt-auto"
+                        className="mt-auto inline-flex items-center rounded bg-white text-green-700 hover:bg-green-50 px-3 py-1.5 text-sm font-medium"
                         onClick={() => navigate('/history')}
                       >
                         View History
@@ -241,27 +240,27 @@ const Home = () => {
               </div>
               
               <div className="mt-4">
-                <div className="card bg-light">
-                  <div className="card-body">
-                    <h6 className="card-title">Quick Stats</h6>
-                    <div className="row text-center">
-                      <div className="col-4">
-                        <div className="fw-bold text-primary">
+                <div className="bg-gray-50 rounded-lg shadow">
+                  <div className="p-4">
+                    <h6 className="text-sm font-semibold">Quick Stats</h6>
+                    <div className="grid grid-cols-3 text-center gap-4">
+                      <div>
+                        <div className="font-semibold text-blue-600">
                           {loading ? '...' : `GHS ${userStats.availableCredit.toLocaleString()}`}
                         </div>
-                        <small className="text-muted">Available Credit</small>
+                        <small className="text-xs text-gray-500">Available Credit</small>
                       </div>
-                      <div className="col-4">
-                        <div className="fw-bold text-success">
+                      <div>
+                        <div className="font-semibold text-green-600">
                           {loading ? '...' : userStats.loansCompleted}
                         </div>
-                        <small className="text-muted">Loans Completed</small>
+                        <small className="text-xs text-gray-500">Loans Completed</small>
                       </div>
-                      <div className="col-4">
-                        <div className="fw-bold text-info">
+                      <div>
+                        <div className="font-semibold text-cyan-600">
                           {loading ? '...' : userStats.creditScore}
                         </div>
-                        <small className="text-muted">Credit Score</small>
+                        <small className="text-xs text-gray-500">Credit Score</small>
                       </div>
                     </div>
                   </div>
@@ -270,9 +269,8 @@ const Home = () => {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Application/Repayment Process Guide */}
+      
       <div className="row mt-4">
         <div className="col-12">
           <div className="card border-primary">

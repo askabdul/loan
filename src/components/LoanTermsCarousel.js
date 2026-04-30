@@ -71,7 +71,7 @@ const LoanTermsCarousel = ({ selectedTerm, onTermChange, userLevel }) => {
     };
 
     fetchAvailableTerms();
-  }, [userLevel, selectedTerm, onTermChange]);
+  }, [userLevel]);
 
   // Check scroll position and update scroll indicators
   const checkScrollPosition = () => {
