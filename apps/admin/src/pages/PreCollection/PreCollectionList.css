@@ -1,0 +1,242 @@
+.precollection-list {
+  padding: 24px;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  color: #1976d2;
+  margin-bottom: 8px;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.page-header p {
+  color: #666;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.loans-table {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.loans-table .MuiTableHead-root {
+  background-color: #1976d2;
+}
+
+.loans-table .MuiTableHead-root .MuiTableCell-root {
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.loans-table .MuiTableBody-root .MuiTableRow-root:hover {
+  background-color: #f8f9fa;
+}
+
+.borrower-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.borrower-info .icon {
+  color: #1976d2;
+  font-size: 16px;
+}
+
+.borrower-info .name {
+  font-weight: 500;
+  color: #333;
+}
+
+.borrower-info .phone {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.amount-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.amount-info .icon {
+  color: #2e7d32;
+  font-size: 16px;
+}
+
+.date-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #666;
+}
+
+.date-info .icon {
+  color: #666;
+  font-size: 16px;
+}
+
+.officer-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #333;
+}
+
+.officer-info .icon {
+  color: #1976d2;
+  font-size: 16px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.action-buttons .MuiButton-root {
+  min-width: auto;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+/* Status chips styling */
+.MuiChip-colorWarning {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.MuiChip-colorInfo {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.MuiChip-colorSuccess {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.MuiChip-colorError {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+/* Dialog styling */
+.MuiDialog-paper {
+  border-radius: 12px;
+}
+
+.MuiDialogTitle-root {
+  background-color: #1976d2;
+  color: white;
+  padding: 16px 24px;
+}
+
+.MuiDialogContent-root {
+  padding: 24px;
+}
+
+.MuiDialogActions-root {
+  padding: 16px 24px;
+  background-color: #f8f9fa;
+}
+
+/* Search and Filter Styles */
+.search-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.search-row {
+  width: 100%;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-row .MuiFormControl-root,
+.filter-row .MuiTextField-root {
+  margin-bottom: 8px;
+}
+
+/* Results count */
+.results-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 8px 16px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+.results-count {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .precollection-list {
+    padding: 16px;
+  }
+  
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+  
+  .loans-table {
+    font-size: 0.875rem;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+  }
+  
+  .action-buttons .MuiButton-root {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-row .MuiFormControl-root,
+  .filter-row .MuiTextField-root {
+    width: 100%;
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .borrower-info,
+  .amount-info,
+  .date-info,
+  .officer-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .MuiTableCell-root {
+    padding: 8px;
+  }
+}

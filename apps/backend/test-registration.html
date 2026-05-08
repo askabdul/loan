@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Registration</title>
+</head>
+<body>
+    <h1>Test Admin Registration</h1>
+    <button onclick="testRegistration()">Test Registration</button>
+    <div id="result"></div>
+
+    <script>
+        async function testRegistration() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            // Get token from localStorage (simulate admin panel)
+            const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4YjVhM2UxMjk5ZWVkODczNWVhM2EyMSIsInR5cGUiOiJhZG1pbiIsImlhdCI6MTc1NzQ0NzAzN30.YourActualTokenHere';
+            
+            const testData = {
+                phoneNumber: '+233123456789',
+                pin: '1234',
+                personalInfo: {
+                    firstName: 'Test',
+                    lastName: 'User',
+                    email: 'test@example.com',
+                    dateOfBirth: '1990-01-01',
+                    gender: 'male',
+                    maritalStatus: 'single',
+                    address: {
+                        street: '123 Test St',
+                        city: 'Accra',
+                        region: 'Greater Accra',
+                        country: 'Ghana'
+                    }
+                },
+                workInfo: {
+                    employmentStatus: 'employed',
+                    employer: 'Test Company',
+                    jobTitle: 'Developer',
+                    monthlyIncome: '5000',
+                    workAddress: 'Test Address',
+                    yearsOfEmployment: '2'
+                },
+                educationInfo: {
+                    highestLevel: 'bachelor',
+                    institution: 'Test University',
+                    fieldOfStudy: 'Computer Science',
+                    graduationYear: '2020'
+                },
+                emergencyContacts: [{
+                    name: 'Emergency Contact',
+                    relationship: 'friend',
+                    phoneNumber: '+233987654321',
+                    email: 'emergency@example.com'
+                }],
+                idVerification: {
+                    idType: 'national_id',
+                    idNumber: 'GHA123456789',
+                    idFrontImage: null,
+                    idBackImage: null,
+                    selfieImage: null
+                },
+                assignedLoanLevel: 1
+            };
+
+            try {
+                console.log('Making request to:', 'http://localhost:5000/api/users/admin-register');
+                console.log('Request data:', testData);
+                console.log('Token:', token);
+                
+                const response = await fetch('http://localhost:5000/api/users/admin-register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(testData)
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                const responseData = await response.json();
+                console.log('Response data:', responseData);
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<div style="color: green;">Success: ${JSON.stringify(responseData, null, 2)}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div style="color: red;">Error ${response.status}: ${JSON.stringify(responseData, null, 2)}</div>`;
+                }
+            } catch (error) {
+                console.error('Request failed:', error);
+                resultDiv.innerHTML = `<div style="color: red;">Request failed: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

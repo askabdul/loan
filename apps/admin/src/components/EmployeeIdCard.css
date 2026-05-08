@@ -1,0 +1,246 @@
+.employee-id-card {
+  width: 350px;
+  height: 220px;
+  background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  font-family: 'Arial', sans-serif;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid #d4edda;
+}
+
+.card-header {
+  background: #28a745;
+  color: white;
+  padding: 8px 16px;
+  text-align: center;
+  position: relative;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.sector-label {
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-top: 4px;
+  display: inline-block;
+}
+
+.card-body {
+  display: flex;
+  padding: 12px;
+  gap: 12px;
+  height: 120px;
+}
+
+.employee-photo {
+  width: 80px;
+  height: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #28a745;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.default-avatar {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #28a745, #20c997);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.employee-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+}
+
+.label {
+  font-weight: bold;
+  color: #333;
+  min-width: 80px;
+  font-size: 11px;
+}
+
+.value {
+  color: #555;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(40, 167, 69, 0.1);
+  border-top: 1px solid rgba(40, 167, 69, 0.2);
+}
+
+.barcode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.barcode-lines {
+  display: flex;
+  gap: 1px;
+  align-items: end;
+  height: 20px;
+}
+
+.barcode-line {
+  width: 2px;
+  background: #333;
+  border-radius: 1px;
+}
+
+.barcode-number {
+  font-size: 8px;
+  font-weight: bold;
+  color: #333;
+  letter-spacing: 1px;
+}
+
+.expiry-info {
+  font-size: 10px;
+  color: #666;
+  font-weight: 500;
+}
+
+.expiry-label {
+  background: #fff3cd;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #ffeaa7;
+}
+
+.company-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.company-logo {
+  display: flex;
+  gap: 2px;
+}
+
+.logo-triangle {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+
+.logo-triangle:nth-child(1) {
+  border-bottom: 12px solid #ff6b6b;
+}
+
+.logo-triangle:nth-child(2) {
+  border-bottom: 12px solid #4ecdc4;
+}
+
+.logo-triangle:nth-child(3) {
+  border-bottom: 12px solid #45b7d1;
+}
+
+.company-name {
+  font-size: 10px;
+  font-weight: bold;
+  color: #333;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.qr-code {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #333;
+  border-radius: 2px;
+}
+
+.qr-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: 100%;
+  height: 100%;
+  gap: 0;
+}
+
+.qr-dot {
+  background: transparent;
+}
+
+.qr-dot.filled {
+  background: #333;
+}
+
+/* Print styles */
+@media print {
+  .employee-id-card {
+    box-shadow: none;
+    border: 2px solid #333;
+  }
+  
+  .card-header {
+    background: #333 !important;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  
+  .logo-triangle:nth-child(1) {
+    border-bottom-color: #333 !important;
+  }
+  
+  .logo-triangle:nth-child(2) {
+    border-bottom-color: #666 !important;
+  }
+  
+  .logo-triangle:nth-child(3) {
+    border-bottom-color: #999 !important;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .employee-id-card {
+    width: 100%;
+    max-width: 350px;
+    margin: 0 auto;
+  }
+}

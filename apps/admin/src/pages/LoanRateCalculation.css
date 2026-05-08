@@ -1,0 +1,634 @@
+.loan-rates-page {
+  padding: 24px;
+  background-color: #f8fafc;
+  min-height: 100vh;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: #64748b;
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+  color: #3b82f6;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.page-header {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.page-icon {
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+}
+
+.page-description {
+  color: #64748b;
+  margin: 0;
+  font-size: 14px;
+}
+
+.btn-save-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #3b82f6;
+  color: white;
+  border: 1px solid #3b82f6;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 12px;
+}
+
+.btn-save-all:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.btn-save-all:disabled {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.btn-refresh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-refresh:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-weight: 500;
+}
+
+.message.success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.message.error {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.rates-container {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.rates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.rate-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s;
+}
+
+.rate-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-color: #cbd5e1;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.term-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.term-icon {
+  color: #3b82f6;
+  background: #eff6ff;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.term-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.term-badge {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn.enabled {
+  color: #10b981;
+}
+
+.toggle-btn.enabled:hover {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.toggle-btn.disabled {
+  color: #6b7280;
+}
+
+.toggle-btn.disabled:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.rate-card.disabled {
+  opacity: 0.6;
+  background: #f8f9fa;
+}
+
+.rate-card.disabled .card-header {
+  background: #f1f3f4;
+}
+
+.rate-card.disabled .rate-field {
+  background: #f8f9fa;
+  border-color: #e5e7eb;
+}
+
+.rate-card.disabled .field-label {
+  color: #6b7280;
+}
+
+.rate-card.disabled .rate-value {
+  color: #9ca3af;
+}
+
+.rate-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rate-field {
+  background: #fafafa;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  transition: all 0.2s;
+}
+
+.rate-field:hover {
+  border-color: #cbd5e1;
+}
+
+.field-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.field-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-icon {
+  color: #6b7280;
+}
+
+.field-label {
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+.btn-edit-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-edit-small:hover {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.field-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rate-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.rate-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.input-unit {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rate-value {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.field-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.btn-save-small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-save-small:hover {
+  background: #2563eb;
+}
+
+.btn-save-small:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.btn-cancel-small {
+  padding: 6px 12px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel-small:hover {
+  background: #e5e7eb;
+}
+
+.btn-cancel-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.calculator-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.calculator-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e2e8f0;
+  height: fit-content;
+  position: sticky;
+  top: 24px;
+}
+
+.calculator-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.calculator-icon {
+  color: #10b981;
+  background: #ecfdf5;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.calculator-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 4px 0;
+}
+
+.calculator-description {
+  color: #64748b;
+  margin: 0;
+  font-size: 14px;
+}
+
+.calculator-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.input-label {
+  display: block;
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calculator-input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.calculator-input:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.calculator-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.calculator-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.calculation-result {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.result-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+}
+
+.result-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
+.result-item.total {
+  background: #f0fdf4;
+  margin: 8px -8px 0 -8px;
+  padding: 12px 8px;
+  border-radius: 6px;
+  border: 1px solid #bbf7d0;
+  font-weight: 600;
+}
+
+.result-label {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.result-value {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.result-item.total .result-label,
+.result-item.total .result-value {
+  color: #166534;
+  font-size: 16px;
+}
+
+@media (max-width: 1024px) {
+  .rates-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .calculator-card {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .loan-rates-page {
+    padding: 16px;
+  }
+  
+  .page-header {
+    padding: 16px;
+  }
+  
+  .header-content {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .rates-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .rate-card {
+    padding: 16px;
+  }
+  
+  .calculator-card {
+    padding: 16px;
+  }
+  
+  .field-buttons {
+    flex-direction: column;
+  }
+}
+
+/* Access Denied Styles */
+.access-denied-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  text-align: center;
+  color: #64748b;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-top: 24px;
+}
+
+.access-denied-message svg {
+  color: #ef4444;
+  margin-bottom: 16px;
+}
+
+.access-denied-message p {
+  font-size: 16px;
+  margin: 0;
+  color: #374151;
+}

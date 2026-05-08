@@ -1,0 +1,33 @@
+{
+  "name": "cedLoan",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/cedLoan/src",
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "react-scripts start",
+        "cwd": "{projectRoot}",
+        "env": {
+          "PORT": "3001",
+          "BROWSER": "none"
+        }
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "react-scripts build",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "react-scripts test --watchAll=false",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

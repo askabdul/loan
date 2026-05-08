@@ -1,0 +1,43 @@
+/* Only non-Tailwind rules remain — animation for fixed dropdown, scrollbar hide */
+
+/* Fixed operation dropdown with fade-in animation */
+.op-menu-fixed {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
+  z-index: 9999;
+  min-width: 160px;
+  overflow: hidden;
+  animation: opMenuFadeIn 0.12s ease;
+}
+
+@keyframes opMenuFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.op-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.op-review  { color: #059669; border-bottom: 1px solid #f3f4f6; }
+.op-review:hover  { background: #f0fdf4; }
+.op-disburse { color: #7c3aed; border-bottom: 1px solid #f3f4f6; }
+.op-disburse:hover { background: #f5f3ff; }
+.op-details { color: #3b82f6; }
+.op-details:hover { background: #eff6ff; }
+
+/* Hide scrollbar on tab nav */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
