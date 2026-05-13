@@ -395,7 +395,7 @@ const NotificationCenter = () => {
 
       {/* Modal */}
       {showModal && ReactDOM.createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)' }}>
+        <div style={{ position: 'fixed', top: 0, left: 250, right: 0, bottom: 0, zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)' }}>
           <div style={{ background: '#fff', borderRadius: '16px', maxWidth: '520px', width: '100%', maxHeight: '90vh', overflowY: 'auto', margin: '0 16px' }}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <p className="font-bold text-gray-800 text-base m-0">

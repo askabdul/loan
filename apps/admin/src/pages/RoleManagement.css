@@ -12,7 +12,7 @@
   background: white;
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .role-management-header h1 {
@@ -67,7 +67,7 @@
   background: white;
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   text-align: center;
 }
 
@@ -87,7 +87,7 @@
   background: white;
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
 }
 
@@ -142,7 +142,7 @@
 .role-table-container {
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
@@ -305,14 +305,14 @@
 .modal-overlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 250px;
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .modal {
@@ -443,43 +443,43 @@
   .role-management {
     padding: 10px;
   }
-  
+
   .role-management-header {
     flex-direction: column;
     gap: 15px;
     align-items: stretch;
   }
-  
+
   .header-actions {
     justify-content: center;
   }
-  
+
   .role-stats {
     grid-template-columns: 1fr;
   }
-  
+
   .controls-row {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .search-box {
     min-width: auto;
   }
-  
+
   .role-table-container {
     overflow-x: auto;
   }
-  
+
   .role-table {
     min-width: 600px;
   }
-  
+
   .modal {
     margin: 10px;
     max-width: calc(100vw - 20px);
   }
-  
+
   .permission-items {
     grid-template-columns: 1fr;
   }

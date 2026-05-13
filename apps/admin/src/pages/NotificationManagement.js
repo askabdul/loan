@@ -607,7 +607,10 @@ const NotificationManagement = () => {
           <div
             style={{
               position: "fixed",
-              inset: 0,
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
               zIndex: 1200,
               display: "flex",
               alignItems: "center",
@@ -618,7 +621,10 @@ const NotificationManagement = () => {
             <div
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 background: "rgba(0,0,0,0.4)",
               }}
               onClick={closeDetailModal}
@@ -714,7 +720,10 @@ const NotificationManagement = () => {
           <div
             style={{
               position: "fixed",
-              inset: 0,
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
               zIndex: 1200,
               display: "flex",
               alignItems: "center",
@@ -725,7 +734,10 @@ const NotificationManagement = () => {
             <div
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 background: "rgba(0,0,0,0.4)",
               }}
               onClick={closeCreateModal}

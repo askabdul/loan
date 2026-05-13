@@ -129,8 +129,10 @@ const Loan = sequelize.define(
       type: DataTypes.ENUM(
         "pending-assignment",
         "assigned",
+        "processed",
         "hung-up",
         "hung-down",
+        "completed",
       ),
       defaultValue: "pending-assignment",
     },
@@ -138,8 +140,10 @@ const Loan = sequelize.define(
       type: DataTypes.ENUM(
         "pending-assignment",
         "assigned",
+        "processed",
         "hung-up",
         "hung-down",
+        "completed",
       ),
       defaultValue: "pending-assignment",
     },

@@ -1,486 +1,345 @@
-import React, { useState, useEffect, useRef } from "react";
-import { io } from "socket.io-client";
+/**
+ * UserLevelAssignment.js — Blueprint Section 5 (Users > Level Assignment)
+ * Admin can view and manually change a user's loan level.
+ * Uses Tailwind CSS, no legacy CSS dependency.
+ * Field names match PostgreSQL / Sequelize (id, not _id; level, not levelNumber).
+ */
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  FiSearch,
-  FiFilter,
-  FiEdit3,
-  FiTrash2,
-  FiChevronLeft,
-  FiChevronRight,
-  FiUsers,
-  FiTrendingUp,
-  FiEdit,
-  FiSave,
-  FiX,
-  FiArrowUp,
-  FiArrowDown,
-  FiRefreshCw,
+  FiSearch, FiFilter, FiEdit3, FiSave, FiX, FiArrowUp, FiArrowDown,
+  FiRefreshCw, FiUsers, FiCheck,
 } from "react-icons/fi";
+import { toast } from "react-toastify";
 import apiService from "../services/api";
-import "./UserLevelAssignment.css";
+
+const LEVEL_COLORS = [
+  "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "bg-cyan-100 text-cyan-800 border-cyan-200",
+  "bg-amber-100 text-amber-800 border-amber-200",
+  "bg-orange-100 text-orange-800 border-orange-200",
+  "bg-red-100 text-red-800 border-red-200",
+];
+
+const levelColor = (lvl) => LEVEL_COLORS[(parseInt(lvl) - 1) % LEVEL_COLORS.length] || "bg-gray-100 text-gray-600 border-gray-200";
 
 const UserLevelAssignment = ({ onClose }) => {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers]           = useState([]);
   const [loanLevels, setLoanLevels] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]       = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
-  const [editingUser, setEditingUser] = useState(null);
-  const [newLevel, setNewLevel] = useState("");
-  const [bulkAction, setBulkAction] = useState("");
-  const [selectedUsers, setSelectedUsers] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [editLevel, setEditLevel]   = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkLevel, setBulkLevel]   = useState("");
+  const [page, setPage]             = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const socketRef = useRef(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const usersPerPage = 10;
-
-  useEffect(() => {
-    fetchUsers();
-    fetchLoanLevels();
-    initializeWebSocket();
-
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
-    };
-  }, [currentPage, searchTerm, selectedLevel]);
-
-  const initializeWebSocket = () => {
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
     try {
-      socketRef.current = io(
-        process.env.REACT_APP_SOCKET_URL || "http://localhost:8001",
-        {
-          transports: ["websocket"],
-          upgrade: true,
-        },
-      );
-
-      socketRef.current.on("connect", () => {
-        setIsConnected(true);
-      });
-
-      socketRef.current.on("disconnect", () => {
-        setIsConnected(false);
-      });
-
-      socketRef.current.on("userLevelUpdated", (data) => {
-        setUsers((prevUsers) =>
-          prevUsers.map((user) =>
-            user._id === data.userId
-              ? { ...user, currentLevel: data.newLevel }
-              : user,
-          ),
-        );
-        setSuccess(
-          `User level updated: ${data.userName} is now ${data.newLevel?.name || "No Level"}`,
-        );
-        setTimeout(() => setSuccess(""), 3000);
-      });
-
-      socketRef.current.on("bulkLevelUpdate", (data) => {
-        fetchUsers(); // Refresh the entire list for bulk updates
-        setSuccess(`Bulk update completed: ${data.updatedCount} users updated`);
-        setTimeout(() => setSuccess(""), 3000);
-      });
-
-      socketRef.current.on("error", (error) => {
-        console.error("WebSocket error:", error);
-        setError("Real-time connection error");
-        setTimeout(() => setError(""), 5000);
-      });
-    } catch (error) {
-      console.error("Failed to initialize WebSocket:", error);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.getUsersWithLevels({
-        page: currentPage,
+      const res = await apiService.getUsersWithLevels({
+        page,
         limit: 10,
         search: searchTerm,
-        level: selectedLevel,
+        level: selectedLevel || undefined,
       });
-
-      if (response.success) {
-        // Handle the correct API response structure
-        setUsers(response.data.users || []);
-        setTotalPages(response.data.pagination?.total || 1);
+      if (res.success) {
+        setUsers(res.data.users || []);
+        setTotalPages(res.data.pagination?.total || 1);
+        setTotalCount(res.data.pagination?.count || 0);
       }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      setError("Failed to fetch users");
+    } catch {
+      toast.error("Failed to load users");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchTerm, selectedLevel]);
 
-  const fetchLoanLevels = async () => {
+  const fetchLevels = useCallback(async () => {
     try {
-      const response = await apiService.getAllLevels();
-      if (response.success || response.status === "success") {
-        // Handle different API response structures
-        setLoanLevels(response.data?.levels || response.data || []);
+      const res = await apiService.getAllLevels();
+      if (res.success || res.status === "success") {
+        setLoanLevels(res.data?.levels || res.data || []);
       }
-    } catch (error) {
-      console.error("Error fetching loan levels:", error);
-    }
-  };
+    } catch { /* silent */ }
+  }, []);
 
-  const handleLevelChange = async (userId, levelId) => {
+  useEffect(() => { fetchUsers(); fetchLevels(); }, [fetchUsers, fetchLevels]);
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setPage(1), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  const handleSaveEdit = async () => {
+    if (!editLevel) { toast.error("Select a level"); return; }
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await apiService.updateUserLevel(userId, levelId);
-
-      if (response.success) {
-        setSuccess("User level updated successfully");
-        setEditingUser(null);
-        fetchUsers(); // Refresh the list
-        setTimeout(() => setSuccess(""), 3000);
+      const res = await apiService.updateUserLevel(editingUserId, editLevel);
+      if (res.success) {
+        toast.success("Level updated");
+        setEditingUserId(null);
+        setEditLevel("");
+        fetchUsers();
       } else {
-        setError(response.message || "Failed to update user level");
+        toast.error(res.message || "Failed to update");
       }
-    } catch (error) {
-      console.error("Error updating user level:", error);
-      setError("Failed to update user level");
-    } finally {
-      setLoading(false);
-      setTimeout(() => setError(""), 5000);
-    }
+    } catch { toast.error("Network error"); }
+    finally { setLoading(false); }
   };
 
-  const handleBulkLevelChange = async () => {
-    if (!bulkAction || selectedUsers.length === 0) {
-      setError("Please select users and a level");
+  const handleQuickLevel = async (userId, levelId) => {
+    setLoading(true);
+    try {
+      const res = await apiService.updateUserLevel(userId, levelId);
+      if (res.success) { toast.success("Level updated"); fetchUsers(); }
+      else toast.error(res.message || "Failed");
+    } catch { toast.error("Network error"); }
+    finally { setLoading(false); }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (!bulkLevel || !selectedIds.length) {
+      toast.error("Select users and a level");
       return;
     }
-
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await apiService.bulkUpdateUserLevels(
-        selectedUsers,
-        bulkAction,
-      );
-
-      if (response.success) {
-        setSuccess(`Successfully updated ${selectedUsers.length} users`);
-        setSelectedUsers([]);
-        setBulkAction("");
-        fetchUsers();
-        setTimeout(() => setSuccess(""), 3000);
-      } else {
-        setError(response.message || "Failed to update users");
-      }
-    } catch (error) {
-      console.error("Error bulk updating users:", error);
-      setError("Failed to update users");
-    } finally {
-      setLoading(false);
-      setTimeout(() => setError(""), 5000);
-    }
+      const res = await apiService.bulkUpdateUserLevels(selectedIds, bulkLevel);
+      if (res.success) {
+        toast.success(`${selectedIds.length} users updated`);
+        setSelectedIds([]); setBulkLevel(""); fetchUsers();
+      } else toast.error(res.message || "Failed");
+    } catch { toast.error("Network error"); }
+    finally { setLoading(false); }
   };
 
-  const handleUserSelection = (userId) => {
-    setSelectedUsers((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId],
-    );
-  };
+  const allSelected = users.length > 0 && selectedIds.length === users.length;
+  const toggleAll   = () => setSelectedIds(allSelected ? [] : users.map((u) => u._id));
+  const toggleOne   = (id) => setSelectedIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
 
-  const handleSelectAll = () => {
-    if (selectedUsers.length === users.length) {
-      setSelectedUsers([]);
-    } else {
-      setSelectedUsers(users.map((user) => user._id));
-    }
-  };
-
-  const getLevelName = (levelId) => {
-    const level = loanLevels.find((l) => l._id === levelId);
-    return level ? `${level.name} (Level ${level.levelNumber})` : "No Level";
-  };
-
-  const getLevelColor = (levelNumber) => {
-    const colors = {
-      1: "#28a745", // Green
-      2: "#17a2b8", // Cyan
-      3: "#ffc107", // Yellow
-      4: "#fd7e14", // Orange
-      5: "#dc3545", // Red
-    };
-    return colors[levelNumber] || "#6c757d";
-  };
-
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.phone?.includes(searchTerm),
-  );
+  const inp = "w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
 
   return (
-    <div className="user-level-assignment">
-      <div className="assignment-header">
-        <div className="header-left">
-          <FiUsers className="header-icon" />
-          <h2>User Level Assignment</h2>
-          <div
-            className={`connection-status ${isConnected ? "connected" : "disconnected"}`}
+    <div className="p-6 bg-gray-50 min-h-screen w-full">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
+            <FiUsers size={18} className="text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 m-0 leading-none">Level Assignment</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Manually set or adjust user loan levels · {totalCount} users
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchUsers}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition"
           >
-            <div className="status-indicator"></div>
-            <span>{isConnected ? "Live Updates" : "Offline"}</span>
-          </div>
-        </div>
-        <button className="btn btn-secondary" onClick={onClose}>
-          <FiX /> Close
-        </button>
-      </div>
-
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      {success && <div className="alert alert-success">{success}</div>}
-
-      {/* Search and Filter Controls */}
-      <div className="assignment-controls">
-        <div className="search-section">
-          <div className="search-input">
-            <FiSearch className="search-icon" />
-            <input
-              type="text"
-              placeholder="Search users by name, email, or phone..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <div className="filter-select">
-            <FiFilter className="filter-icon" />
-            <select
-              value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value)}
-            >
-              <option value="">All Levels</option>
-              {loanLevels.map((level) => (
-                <option key={level._id} value={level._id}>
-                  {level.name} (Level {level.levelNumber})
-                </option>
-              ))}
-              <option value="no-level">No Level Assigned</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Bulk Actions */}
-        {selectedUsers.length > 0 && (
-          <div className="bulk-actions">
-            <span className="selected-count">
-              {selectedUsers.length} user{selectedUsers.length !== 1 ? "s" : ""}{" "}
-              selected
-            </span>
-            <select
-              value={bulkAction}
-              onChange={(e) => setBulkAction(e.target.value)}
-            >
-              <option value="">Select Level</option>
-              {loanLevels.map((level) => (
-                <option key={level._id} value={level._id}>
-                  {level.name} (Level {level.levelNumber})
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn-primary"
-              onClick={handleBulkLevelChange}
-              disabled={loading || !bulkAction}
-            >
-              {loading ? <FiRefreshCw className="spinning" /> : <FiSave />}
-              Update Selected
+            <FiRefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+          </button>
+          {onClose && (
+            <button onClick={onClose} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition">
+              <FiX size={13} /> Close
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Users Table */}
-      <div className="users-table-container">
-        <table className="users-table">
+      {/* Search + Filter */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative flex-1 min-w-[220px]">
+          <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search by name, email, or phone…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          />
+        </div>
+        <div className="relative min-w-[200px]">
+          <FiFilter size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <select
+            value={selectedLevel}
+            onChange={(e) => { setSelectedLevel(e.target.value); setPage(1); }}
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none cursor-pointer"
+          >
+            <option value="">All Levels</option>
+            {loanLevels.map((l) => (
+              <option key={l.id} value={l.level}>{l.name} (Level {l.level})</option>
+            ))}
+            <option value="0">No Level Assigned</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+          <span className="text-sm font-semibold text-blue-700">{selectedIds.length} selected</span>
+          <select
+            value={bulkLevel}
+            onChange={(e) => setBulkLevel(e.target.value)}
+            className="text-sm border border-blue-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select new level…</option>
+            {loanLevels.map((l) => (
+              <option key={l.id} value={l.id}>{l.name} (Level {l.level})</option>
+            ))}
+          </select>
+          <button
+            onClick={handleBulkUpdate}
+            disabled={!bulkLevel || loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold disabled:opacity-50 transition"
+          >
+            <FiSave size={13} /> Apply to Selected
+          </button>
+          <button onClick={() => setSelectedIds([])} className="ml-auto text-xs text-blue-500 hover:underline">Clear</button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+        <table className="w-full text-sm border-collapse" style={{ minWidth: 760 }}>
           <thead>
-            <tr>
-              <th>
-                <input
-                  type="checkbox"
-                  checked={
-                    selectedUsers.length === users.length && users.length > 0
-                  }
-                  onChange={handleSelectAll}
-                />
+            <tr className="bg-gray-50 border-b border-gray-100">
+              <th className="px-4 py-3.5 w-10">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} className="accent-blue-600" />
               </th>
-              <th>User</th>
-              <th>Contact</th>
-              <th>Current Level</th>
-              <th>Loan History</th>
-              <th>Actions</th>
+              {["User", "Contact", "Current Level", "Loan History", "Actions"].map((h) => (
+                <th key={h} className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-left whitespace-nowrap">
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-50">
             {loading ? (
               <tr>
-                <td colSpan="6" className="text-center">
-                  <FiRefreshCw className="spinning" /> Loading users...
+                <td colSpan={6} className="px-4 py-16 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+                    <p className="text-sm text-gray-400">Loading users…</p>
+                  </div>
                 </td>
               </tr>
-            ) : filteredUsers.length === 0 ? (
+            ) : users.length === 0 ? (
               <tr>
-                <td colSpan="6" className="text-center">
-                  No users found
-                </td>
+                <td colSpan={6} className="px-4 py-16 text-center text-sm text-gray-400">No users found.</td>
               </tr>
             ) : (
-              filteredUsers.map((user) => (
-                <tr key={user._id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedUsers.includes(user._id)}
-                      onChange={() => handleUserSelection(user._id)}
-                    />
-                  </td>
-                  <td>
-                    <div className="user-info">
-                      <div className="user-name">{user.name}</div>
-                      <div className="user-id">ID: {user._id.slice(-8)}</div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="contact-info">
-                      <div>{user.email}</div>
-                      <div>{user.phone}</div>
-                    </div>
-                  </td>
-                  <td>
-                    {editingUser === user._id ? (
-                      <div className="level-edit">
-                        <select
-                          value={newLevel}
-                          onChange={(e) => setNewLevel(e.target.value)}
-                          className="level-select"
-                        >
-                          <option value="">No Level</option>
-                          {loanLevels.map((level) => (
-                            <option key={level._id} value={level._id}>
-                              {level.name} (Level {level.level})
-                            </option>
-                          ))}
-                        </select>
-                        <div className="edit-actions">
-                          <button
-                            className="btn btn-sm btn-success"
-                            onClick={() =>
-                              handleLevelChange(user._id, newLevel)
-                            }
-                            disabled={loading}
+              users.map((user) => {
+                const lvl = user.currentLevel;
+                const lvlNum = lvl?.level;
+                const isEditing = editingUserId === user._id;
+                return (
+                  <tr key={user._id} className={`hover:bg-gray-50/60 transition-colors ${selectedIds.includes(user._id) ? "bg-blue-50/30" : ""}`}>
+                    <td className="px-4 py-3">
+                      <input type="checkbox" checked={selectedIds.includes(user._id)} onChange={() => toggleOne(user._id)} className="accent-blue-600" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-800">{user.name || "—"}</p>
+                      <p className="text-xs text-gray-400 font-mono">{user._id?.slice(-8)}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-600">{user.email || "—"}</p>
+                      <p className="text-xs text-gray-400">{user.phone || "—"}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      {isEditing ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={editLevel}
+                            onChange={(e) => setEditLevel(e.target.value)}
+                            className="text-sm border border-blue-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            autoFocus
                           >
-                            <FiSave />
+                            <option value="">No Level</option>
+                            {loanLevels.map((l) => (
+                              <option key={l.id} value={l.id}>{l.name} (Level {l.level})</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={handleSaveEdit}
+                            disabled={loading}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50"
+                          >
+                            <FiCheck size={13} />
                           </button>
                           <button
-                            className="btn btn-sm btn-secondary"
-                            onClick={() => {
-                              setEditingUser(null);
-                              setNewLevel("");
-                            }}
+                            onClick={() => { setEditingUserId(null); setEditLevel(""); }}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition"
                           >
-                            <FiX />
+                            <FiX size={13} />
                           </button>
                         </div>
+                      ) : lvl ? (
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${levelColor(lvlNum)}`}>
+                          {lvl.name} · Lvl {lvlNum}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">No Level</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-xs text-gray-600 space-y-0.5">
+                        <p>Completed: <span className="font-semibold text-gray-800">{user.totalLoansCompleted || 0}</span></p>
+                        <p>Repaid: <span className="font-semibold text-gray-800">GHS {(user.totalAmountRepaid || 0).toLocaleString()}</span></p>
                       </div>
-                    ) : (
-                      <div className="current-level">
-                        {user.currentLevel ? (
-                          <span
-                            className="level-badge"
-                            style={{
-                              backgroundColor: getLevelColor(
-                                user.currentLevel.level,
-                              ),
-                              color: "white",
-                            }}
-                          >
-                            {user.currentLevel.name} (Level{" "}
-                            {user.currentLevel.level})
-                          </span>
-                        ) : (
-                          <span className="no-level">No Level</span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    <div className="loan-stats">
-                      <div>Completed: {user.totalLoansCompleted || 0}</div>
-                      <div>Amount Repaid: ${user.totalAmountRepaid || 0}</div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="user-actions">
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={() => {
-                          setEditingUser(user._id);
-                          setNewLevel(user.currentLoanLevel?._id || "");
-                        }}
-                        disabled={loading}
-                      >
-                        <FiEdit /> Edit Level
-                      </button>
-                      {user.currentLoanLevel &&
-                        user.currentLoanLevel.levelNumber > 1 && (
+                    </td>
+                    <td className="px-4 py-3">
+                      {!isEditing && (
+                        <div className="flex items-center gap-1">
                           <button
-                            className="btn btn-sm btn-warning"
                             onClick={() => {
-                              const lowerLevel = loanLevels.find(
-                                (l) =>
-                                  l.levelNumber ===
-                                  user.currentLoanLevel.levelNumber - 1,
-                              );
-                              if (lowerLevel) {
-                                handleLevelChange(user._id, lowerLevel._id);
-                              }
+                              setEditingUserId(user._id);
+                              setEditLevel(lvl?.id || "");
                             }}
                             disabled={loading}
-                            title="Downgrade Level"
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50"
                           >
-                            <FiArrowDown />
+                            <FiEdit3 size={11} /> Edit
                           </button>
-                        )}
-                      {user.currentLoanLevel &&
-                        user.currentLoanLevel.levelNumber < 5 && (
-                          <button
-                            className="btn btn-sm btn-success"
-                            onClick={() => {
-                              const higherLevel = loanLevels.find(
-                                (l) =>
-                                  l.levelNumber ===
-                                  user.currentLoanLevel.levelNumber + 1,
-                              );
-                              if (higherLevel) {
-                                handleLevelChange(user._id, higherLevel._id);
-                              }
-                            }}
-                            disabled={loading}
-                            title="Upgrade Level"
-                          >
-                            <FiArrowUp />
-                          </button>
-                        )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                          {lvlNum > 1 && (
+                            <button
+                              onClick={() => {
+                                const lower = loanLevels.find((l) => l.level === lvlNum - 1);
+                                if (lower) handleQuickLevel(user._id, lower.id);
+                              }}
+                              disabled={loading}
+                              title="Downgrade Level"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 transition disabled:opacity-50"
+                            >
+                              <FiArrowDown size={12} />
+                            </button>
+                          )}
+                          {lvlNum < 5 && (
+                            <button
+                              onClick={() => {
+                                const higher = loanLevels.find((l) => l.level === lvlNum + 1);
+                                if (higher) handleQuickLevel(user._id, higher.id);
+                              }}
+                              disabled={loading}
+                              title="Upgrade Level"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-700 transition disabled:opacity-50"
+                            >
+                              <FiArrowUp size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -488,25 +347,21 @@ const UserLevelAssignment = ({ onClose }) => {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="pagination">
+        <div className="flex items-center justify-center gap-4 mt-4">
           <button
-            className="btn btn-sm"
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1 || loading}
+            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
           >
-            Previous
+            ← Prev
           </button>
-          <span className="page-info">
-            Page {currentPage} of {totalPages}
-          </span>
+          <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
           <button
-            className="btn btn-sm"
-            onClick={() =>
-              setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-            }
-            disabled={currentPage === totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages || loading}
+            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
           >
-            Next
+            Next →
           </button>
         </div>
       )}

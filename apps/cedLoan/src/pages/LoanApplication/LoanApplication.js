@@ -25,6 +25,11 @@ const LoanApplication = () => {
   const [availableTerms, setAvailableTerms] = useState([7, 14, 30]);
   const [dynamicFees, setDynamicFees] = useState(null);
   const [isDisbursementLoading, setIsDisbursementLoading] = useState(false);
+  const [disbursementJustRequested, setDisbursementJustRequested] =
+    useState(false);
+  const [confirmReceiptLoading, setConfirmReceiptLoading] = useState(false);
+  const [receiptJustConfirmed, setReceiptJustConfirmed] = useState(false);
+  const [confirmReceiptError, setConfirmReceiptError] = useState(null);
   const [isCalculatingFees, setIsCalculatingFees] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState(7);
   const [isLoading, setIsLoading] = useState(true);
@@ -317,8 +322,9 @@ const LoanApplication = () => {
         return renderApprovedScreen();
       case "rejected":
         return renderRejectedScreen();
-      case "active":
       case "disbursed":
+        return renderDisbursedScreen();
+      case "active":
       case "overdue":
         return renderActiveRepaymentScreen();
       case "completed":
@@ -330,272 +336,487 @@ const LoanApplication = () => {
 
   // Pending loan screen
   const renderPendingScreen = () => (
-    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
-          <span className="text-3xl">⏳</span>
+    <>
+      {/* Status Header */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
+        <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
+          <span className="text-2xl">⏳</span>
         </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-1.5">
+        <h3 className="text-xl font-bold text-gray-900 mb-1">
           Application Under Review
         </h3>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500">
           Your loan application is being reviewed by our team.
         </p>
+      </div>
 
-        <div className="space-y-3 text-left mb-5">
-          <div className="bg-gray-50 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-3 font-semibold uppercase tracking-widest">
-              Application Details
-            </p>
-            <div className="space-y-3">
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Amount</span>
-                <span className="text-sm font-bold text-gray-900">
-                  GHS {parseFloat(activeLoan.amount || 0).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Term</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {activeLoan.termInDays} days
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Level</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {currentLevel?.name || "N/A"}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Applied</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {new Date(
-                    activeLoan.applicationDate || activeLoan.createdAt,
-                  ).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
+      {/* Application Details */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-xs text-gray-400 mb-4 font-semibold uppercase tracking-widest">
+          Application Details
+        </p>
+        <div className="space-y-3">
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Amount</span>
+            <span className="text-sm font-bold text-gray-900">
+              GHS {parseFloat(activeLoan.amount || 0).toLocaleString()}
+            </span>
           </div>
-          <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-            <p className="text-xs text-amber-600 mb-3 font-semibold uppercase tracking-widest">
-              What Happens Next
-            </p>
-            <div className="space-y-2.5">
-              {[
-                "✅ Application received",
-                "🔍 Under review by our team",
-                "⏳ Decision typically within 24 hrs",
-                "📩 You'll be notified by SMS",
-              ].map((s) => (
-                <p key={s} className="text-sm text-gray-700">
-                  {s}
-                </p>
-              ))}
-            </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Term</span>
+            <span className="text-sm font-bold text-gray-900">
+              {activeLoan.termInDays} days
+            </span>
           </div>
-        </div>
-
-        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-          <p className="text-sm text-blue-700">
-            <strong>📞 Need Help?</strong> Contact our support team if you have
-            any questions about your application.
-          </p>
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Level</span>
+            <span className="text-sm font-bold text-gray-900">
+              {currentLevel?.name || "N/A"}
+            </span>
+          </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Applied</span>
+            <span className="text-sm font-bold text-gray-900">
+              {new Date(
+                activeLoan.applicationDate || activeLoan.createdAt,
+              ).toLocaleDateString()}
+            </span>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* What Happens Next */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-xs text-amber-600 mb-4 font-semibold uppercase tracking-widest">
+          What Happens Next
+        </p>
+        <div className="space-y-3">
+          {[
+            "✅ Application received",
+            "🔍 Under review by our team",
+            "⏳ Decision typically within 24 hrs",
+            "📩 You'll be notified by SMS",
+          ].map((s) => (
+            <p key={s} className="text-sm text-gray-700">
+              {s}
+            </p>
+          ))}
+        </div>
+      </div>
+
+      {/* Need Help */}
+      <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5">
+        <p className="text-sm text-blue-700">
+          <strong>📞 Need Help?</strong> Contact our support team if you have
+          any questions about your application.
+        </p>
+      </div>
+    </>
   );
 
   // Approved loan screen
   const renderApprovedScreen = () => (
-    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
-          <span className="text-3xl">🎉</span>
+    <>
+      {/* Status Header */}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
+        <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+          <span className="text-2xl">🎉</span>
         </div>
-        <h3 className="text-xl font-bold text-emerald-700 mb-1.5">
+        <h3 className="text-xl font-bold text-emerald-700 mb-1">
           Loan Approved!
         </h3>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500">
           Your loan has been approved and is ready for disbursement.
         </p>
+      </div>
 
-        <div className="space-y-3 text-left mb-4">
-          <div className="bg-gray-50 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-3 font-semibold uppercase tracking-widest">
-              Loan Details
-            </p>
-            <div className="space-y-3">
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Amount</span>
-                <span className="text-sm font-bold text-gray-900">
-                  GHS {parseFloat(activeLoan.amount || 0).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Term</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {activeLoan.termInDays} days
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Interest</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {currentLevel?.interestRate || 0}%
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline pt-2 border-t border-gray-100">
-                <span className="text-sm text-gray-500">Total Repayment</span>
-                <span className="text-sm font-bold text-blue-600">
-                  GHS{" "}
-                  {parseFloat(
-                    activeLoan.totalAmount || activeLoan.amount || 0,
-                  ).toLocaleString()}
-                </span>
-              </div>
-            </div>
+      {/* Loan Details */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-xs text-gray-400 mb-4 font-semibold uppercase tracking-widest">
+          Loan Details
+        </p>
+        <div className="space-y-3">
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Amount</span>
+            <span className="text-sm font-bold text-gray-900">
+              GHS {parseFloat(activeLoan.amount || 0).toLocaleString()}
+            </span>
           </div>
-          <div className="bg-gray-50 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-3 font-semibold uppercase tracking-widest">
-              Important Dates
-            </p>
-            <div className="space-y-3">
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Approved</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {new Date(activeLoan.approvalDate).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-gray-500">Due Date</span>
-                <span className="text-sm font-bold text-gray-900">
-                  {(() => {
-                    const d = getLoanDueDate(activeLoan);
-                    return d
-                      ? d.toLocaleDateString() +
-                          (activeLoan.dueDate ? "" : " (est.)")
-                      : "TBD";
-                  })()}
-                </span>
-              </div>
-            </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Term</span>
+            <span className="text-sm font-bold text-gray-900">
+              {activeLoan.termInDays} days
+            </span>
           </div>
-        </div>
-
-        {activeLoan.isAutoApproved && (
-          <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 mb-4">
-            <p className="text-sm text-emerald-700">
-              <strong>⚡ Auto-Approved!</strong> {activeLoan.autoApprovalReason}
-            </p>
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Interest</span>
+            <span className="text-sm font-bold text-gray-900">
+              {currentLevel?.interestRate || 0}%
+            </span>
           </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            className="w-full bg-emerald-600 hover:bg-emerald-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold disabled:opacity-60"
-            disabled={isDisbursementLoading}
-            onClick={async () => {
-              if (isDisbursementLoading) return;
-              setIsDisbursementLoading(true);
-              try {
-                await loansAPI.requestDisbursement(activeLoan.id);
-                showToast(
-                  "Disbursement request sent! Admin will process it shortly.",
-                  "success",
-                );
-              } catch (err) {
-                showToast(
-                  err?.message ||
-                    "Failed to request disbursement. Please try again.",
-                  "error",
-                );
-              } finally {
-                setIsDisbursementLoading(false);
-              }
-            }}
-          >
-            {isDisbursementLoading ? "Sending…" : "💰 Request Disbursement"}
-          </button>
-          <button
-            className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
-            onClick={() => navigate("/history")}
-          >
-            📋 View Details
-          </button>
+          <div className="flex justify-between items-baseline pt-2 border-t border-gray-100">
+            <span className="text-sm text-gray-500">Total Repayment</span>
+            <span className="text-sm font-bold text-blue-600">
+              GHS{" "}
+              {parseFloat(
+                activeLoan.totalAmount || activeLoan.amount || 0,
+              ).toLocaleString()}
+            </span>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Important Dates */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-xs text-gray-400 mb-4 font-semibold uppercase tracking-widest">
+          Important Dates
+        </p>
+        <div className="space-y-3">
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Approved</span>
+            <span className="text-sm font-bold text-gray-900">
+              {new Date(activeLoan.approvalDate).toLocaleDateString()}
+            </span>
+          </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-sm text-gray-500">Due Date</span>
+            <span className="text-sm font-bold text-gray-900">
+              {(() => {
+                const d = getLoanDueDate(activeLoan);
+                return d
+                  ? d.toLocaleDateString() +
+                      (activeLoan.dueDate ? "" : " (est.)")
+                  : "TBD";
+              })()}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {activeLoan.isAutoApproved && (
+        <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-5">
+          <p className="text-sm text-emerald-700">
+            <strong>⚡ Auto-Approved!</strong> {activeLoan.autoApprovalReason}
+          </p>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      {(() => {
+        const alreadyRequested =
+          disbursementJustRequested ||
+          (activeLoan?.adminNotes || []).some(
+            (n) => n.type === "disbursement_request",
+          );
+
+        if (alreadyRequested) {
+          return (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <span className="text-sm font-semibold text-amber-700">
+                  Disbursement Request Submitted
+                </span>
+              </div>
+              <p className="text-xs text-amber-600">
+                Your request has been received. Our team is processing it and
+                you will be notified once funds are sent to your account.
+              </p>
+              <button
+                className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3 text-sm font-semibold"
+                onClick={() => navigate("/history")}
+              >
+                📋 View Details
+              </button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold disabled:opacity-60"
+              disabled={isDisbursementLoading}
+              onClick={async () => {
+                if (isDisbursementLoading) return;
+                setIsDisbursementLoading(true);
+                try {
+                  await loansAPI.requestDisbursement(activeLoan.id);
+                  setDisbursementJustRequested(true);
+                  showToast(
+                    "Disbursement request sent! Admin will process it shortly.",
+                    "success",
+                  );
+                } catch (err) {
+                  showToast(
+                    err?.message ||
+                      "Failed to request disbursement. Please try again.",
+                    "error",
+                  );
+                } finally {
+                  setIsDisbursementLoading(false);
+                }
+              }}
+            >
+              {isDisbursementLoading ? "Sending…" : "💰 Request Disbursement"}
+            </button>
+            <button
+              className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
+              onClick={() => navigate("/history")}
+            >
+              📋 View Details
+            </button>
+          </div>
+        );
+      })()}
+    </>
   );
 
   // Rejected loan screen
   const renderRejectedScreen = () => (
-    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
-          <span className="text-3xl">❌</span>
+    <>
+      {/* Status Header */}
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
+        <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+          <span className="text-2xl">❌</span>
         </div>
-        <h3 className="text-xl font-bold text-red-600 mb-1.5">
+        <h3 className="text-xl font-bold text-red-600 mb-1">
           Application Not Approved
         </h3>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500">
           Unfortunately, your loan application of{" "}
           <strong>
             GHS {parseFloat(activeLoan.amount || 0).toLocaleString()}
           </strong>{" "}
           was not approved at this time.
         </p>
+      </div>
 
-        {activeLoan.rejectionReason && (
-          <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 text-left mb-5">
-            <p className="text-sm text-amber-800">
-              <strong>📋 Reason:</strong> {activeLoan.rejectionReason}
+      {activeLoan.rejectionReason && (
+        <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5">
+          <p className="text-sm text-amber-800">
+            <strong>📋 Reason:</strong> {activeLoan.rejectionReason}
+          </p>
+        </div>
+      )}
+
+      {/* Tips */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <p className="text-sm font-semibold text-blue-700 mb-3">
+          💡 Tips to Improve Your Application
+        </p>
+        <ul className="space-y-2.5">
+          {[
+            "Complete more loans successfully to build your credit history",
+            "Consider applying for a smaller amount",
+            "Ensure all your profile information is complete and accurate",
+            "Wait for your loan level to improve with successful repayments",
+          ].map((tip) => (
+            <li key={tip} className="text-xs text-gray-600 flex gap-2">
+              <span className="text-blue-400 flex-shrink-0">•</span>
+              {tip}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          className="w-full bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold"
+          onClick={() => {
+            setActiveLoan(null);
+            setLoanStatus(null);
+            showToast("You can now apply for a new loan", "info");
+          }}
+        >
+          🔄 Apply Again
+        </button>
+        <button
+          className="w-full border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
+          onClick={() => navigate("/profile")}
+        >
+          👤 Update Profile
+        </button>
+      </div>
+    </>
+  );
+
+  // Disbursed loan screen — customer confirms receipt; admin can activate anytime (confirmation is a courtesy)
+  const renderDisbursedScreen = () => {
+    const alreadyConfirmed =
+      receiptJustConfirmed ||
+      (activeLoan?.adminNotes || []).some(
+        (n) => n.type === "receipt_confirmed",
+      );
+
+    const handleConfirmReceipt = async () => {
+      if (confirmReceiptLoading) return;
+      setConfirmReceiptLoading(true);
+      setConfirmReceiptError(null);
+      try {
+        await loansAPI.confirmReceipt(activeLoan.id);
+        setReceiptJustConfirmed(true);
+        showToast(
+          "Receipt confirmed! The admin will activate your loan shortly.",
+          "success",
+        );
+      } catch (err) {
+        const msg =
+          err?.message || "Failed to confirm receipt. Please try again.";
+        setConfirmReceiptError(msg);
+        showToast(msg, "error");
+      } finally {
+        setConfirmReceiptLoading(false);
+      }
+    };
+
+    return (
+      <>
+        {/* Status Header */}
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-center">
+          <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3">
+            <span className="text-2xl">💸</span>
+          </div>
+          <h3 className="text-xl font-bold text-blue-700 mb-1">
+            Funds Disbursed!
+          </h3>
+          <p className="text-sm text-gray-500">
+            Your loan funds have been sent to your mobile money account.
+          </p>
+        </div>
+
+        {/* Loan Details */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <p className="text-xs text-gray-400 mb-4 font-semibold uppercase tracking-widest">
+            Loan Details
+          </p>
+          <div className="space-y-3">
+            <div className="flex justify-between items-baseline">
+              <span className="text-sm text-gray-500">Amount</span>
+              <span className="text-sm font-bold text-gray-900">
+                GHS {parseFloat(activeLoan.amount || 0).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-sm text-gray-500">Term</span>
+              <span className="text-sm font-bold text-gray-900">
+                {activeLoan.termInDays} days
+              </span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-sm text-gray-500">Total Repayment</span>
+              <span className="text-sm font-bold text-blue-600">
+                GHS{" "}
+                {parseFloat(
+                  activeLoan.totalAmount || activeLoan.amount || 0,
+                ).toLocaleString()}
+              </span>
+            </div>
+            {activeLoan.disbursementDate && (
+              <div className="flex justify-between items-baseline pt-2 border-t border-gray-100">
+                <span className="text-sm text-gray-500">Disbursed On</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {new Date(activeLoan.disbursementDate).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+            {activeLoan.dueDate && (
+              <div className="flex justify-between items-baseline">
+                <span className="text-sm text-gray-500">Due Date</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {new Date(activeLoan.dueDate).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Receipt Confirmation */}
+        {alreadyConfirmed ? (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-sm font-bold">✓</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-emerald-700">
+                  Receipt Confirmed
+                </p>
+                <p className="text-xs text-emerald-600 mt-0.5">
+                  Our team has been notified and will activate your loan
+                  shortly. You will receive a notification when it's active.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-800 mb-1">
+                Have you received your funds?
+              </p>
+              <p className="text-xs text-gray-500">
+                Check your mobile money wallet. Once funds arrive, tap the
+                button below to notify us so we can activate your loan.
+              </p>
+            </div>
+
+            {/* Persistent inline error banner */}
+            {confirmReceiptError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                <span className="text-red-500 text-sm flex-shrink-0 mt-0.5">
+                  ✕
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-red-700">
+                    Could not confirm receipt
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    {confirmReceiptError}
+                  </p>
+                  <p className="text-xs text-red-500 mt-1">
+                    Please try again. If the problem persists, contact support.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <button
+              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] transition-all text-white rounded-xl px-4 py-3.5 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+              disabled={confirmReceiptLoading}
+              onClick={handleConfirmReceipt}
+            >
+              {confirmReceiptLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Confirming…
+                </>
+              ) : (
+                "✅  Yes, I've Received My Funds"
+              )}
+            </button>
+
+            <p className="text-[11px] text-gray-400 text-center">
+              Haven't received it yet? Wait a few minutes and check your wallet.
+              Contact support if funds don't arrive within 24 hours.
             </p>
           </div>
         )}
 
-        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100 text-left mb-6">
-          <p className="text-sm font-semibold text-blue-700 mb-3">
-            💡 Tips to Improve Your Application
-          </p>
-          <ul className="space-y-2">
-            {[
-              "Complete more loans successfully to build your credit history",
-              "Consider applying for a smaller amount",
-              "Ensure all your profile information is complete and accurate",
-              "Wait for your loan level to improve with successful repayments",
-            ].map((tip) => (
-              <li key={tip} className="text-xs text-gray-600 flex gap-2">
-                <span className="text-blue-400">•</span>
-                {tip}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            className="w-full bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold"
-            onClick={() => {
-              setActiveLoan(null);
-              setLoanStatus(null);
-              showToast("You can now apply for a new loan", "info");
-            }}
-          >
-            🔄 Apply Again
-          </button>
-          <button
-            className="w-full border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
-            onClick={() => navigate("/profile")}
-          >
-            👤 Update Profile
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+        <button
+          className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3 text-sm font-semibold"
+          onClick={() => navigate("/history")}
+        >
+          📋 View Loan Details
+        </button>
+      </>
+    );
+  };
 
   // Active repayment screen
   const renderActiveRepaymentScreen = () => (
-    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
+    <>
       {/* Header */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl shadow-md p-6 text-white">
         <p className="text-blue-200 text-xs font-semibold uppercase tracking-widest mb-2">
@@ -721,12 +942,12 @@ const LoanApplication = () => {
       {/* Payment Modal */}
       {showPaymentModal && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center pb-[60px] sm:pb-0"
           style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
         >
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md shadow-2xl">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[calc(100dvh-60px)] sm:max-h-[90vh]">
             {/* Modal header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
                 <h5 className="font-bold text-gray-800 text-base">
                   Make a Payment
@@ -745,7 +966,7 @@ const LoanApplication = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto max-h-[75vh]">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               {/* Loan summary strip */}
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -882,7 +1103,7 @@ const LoanApplication = () => {
                   onChange={(e) => setSelectedProvider(e.target.value)}
                 >
                   <option value="MTN">📱 MTN Mobile Money</option>
-                  <option value="Hubtel">💳 Hubtel</option>
+                  <option value="Telecel">📲 Telecel Money</option>
                   <option value="AirtelTigo">📞 AirtelTigo Money</option>
                 </select>
               </div>
@@ -957,7 +1178,7 @@ const LoanApplication = () => {
             </div>
 
             {/* Footer */}
-            <div className="flex gap-3 px-5 py-4 border-t border-gray-100">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 flex-shrink-0">
               <button
                 className="flex-1 border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors rounded-xl py-2.5 text-sm font-semibold"
                 onClick={() => setShowPaymentModal(false)}
@@ -976,53 +1197,55 @@ const LoanApplication = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 
   // Completed loan screen
   const renderCompletedScreen = () => (
-    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
-      <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6 text-center">
-        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
-          <span className="text-3xl">🏆</span>
+    <>
+      {/* Status Header */}
+      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
+        <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
+          <span className="text-2xl">🏆</span>
         </div>
-        <h3 className="text-xl font-bold text-emerald-700 mb-1.5">
+        <h3 className="text-xl font-bold text-emerald-700 mb-1">
           Loan Completed!
         </h3>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500">
           Congratulations! You have successfully repaid your loan.
         </p>
-
-        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 mb-6">
-          <p className="text-sm text-emerald-700">
-            <strong>✅ Well Done!</strong> Your successful repayment has been
-            recorded and may help improve your loan level.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            className="w-full bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold"
-            onClick={() => {
-              setActiveLoan(null);
-              setLoanStatus(null);
-              showToast(
-                "You can now apply for a new loan with potentially better terms!",
-                "success",
-              );
-            }}
-          >
-            🆕 Apply for New Loan
-          </button>
-          <button
-            className="w-full border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
-            onClick={() => navigate("/history")}
-          >
-            📋 View History
-          </button>
-        </div>
       </div>
-    </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-5">
+        <p className="text-sm text-emerald-700">
+          <strong>✅ Well Done!</strong> Your successful repayment has been
+          recorded and may help improve your loan level.
+        </p>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          className="w-full bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold"
+          onClick={() => {
+            setActiveLoan(null);
+            setLoanStatus(null);
+            showToast(
+              "You can now apply for a new loan with potentially better terms!",
+              "success",
+            );
+          }}
+        >
+          🆕 Apply for New Loan
+        </button>
+        <button
+          className="w-full border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
+          onClick={() => navigate("/history")}
+        >
+          📋 View History
+        </button>
+      </div>
+    </>
   );
 
   const handleSubmit = async (e) => {
@@ -1279,7 +1502,7 @@ const LoanApplication = () => {
 
   // Main loan application form (when no active loan)
   const renderLoanApplicationForm = () => (
-    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
+    <>
       <div>
         <button
           className="inline-flex items-center text-sm text-gray-500 hover:text-gray-800 mb-4 transition-colors"
@@ -1599,7 +1822,8 @@ const LoanApplication = () => {
                 </p>
                 <p>
                   <strong>4. Payment Methods:</strong> Payments can be made via
-                  mobile money (MTN, Airtel, Hubtel) in full or partial amounts.
+                  mobile money (MTN, Telecel, AirtelTigo) in full or partial
+                  amounts.
                 </p>
                 <p>
                   <strong>5. Partial Payments:</strong> Partial payments are
@@ -1736,11 +1960,11 @@ const LoanApplication = () => {
       {/* Payment Modal */}
       {showPaymentModal && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center pb-[60px] sm:pb-0"
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
         >
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[calc(100dvh-60px)] sm:max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
               <h5 className="font-bold text-gray-800">💳 Make Payment</h5>
               <button
                 className="text-gray-400 hover:text-gray-600 text-xl"
@@ -1749,7 +1973,7 @@ const LoanApplication = () => {
                 ×
               </button>
             </div>
-            <div className="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div className="bg-red-50 rounded-xl p-3 border border-red-100">
                 <p className="text-sm text-red-700">
                   <strong>Outstanding Balance:</strong> GHS{" "}
@@ -1814,7 +2038,7 @@ const LoanApplication = () => {
                   onChange={(e) => setSelectedProvider(e.target.value)}
                 >
                   <option value="MTN">📱 MTN Mobile Money</option>
-                  <option value="Hubtel">💳 Hubtel</option>
+                  <option value="Telecel">📲 Telecel Money</option>
                   <option value="AirtelTigo">📞 AirtelTigo Money</option>
                 </select>
               </div>
@@ -1877,7 +2101,7 @@ const LoanApplication = () => {
                 </div>
               )}
             </div>
-            <div className="flex gap-3 px-5 py-4 border-t border-gray-100">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 flex-shrink-0">
               <button
                 className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors rounded-xl py-2.5 text-sm font-semibold"
                 onClick={() => setShowPaymentModal(false)}
@@ -1896,13 +2120,15 @@ const LoanApplication = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 
   // Main render logic
 
   return (
-    <div className="max-w-xl mx-auto px-4 mt-4">{renderLoanStatusScreen()}</div>
+    <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-4">
+      {renderLoanStatusScreen()}
+    </div>
   );
 };
 

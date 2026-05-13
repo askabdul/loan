@@ -121,8 +121,13 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Stats */
@@ -137,7 +142,7 @@
   background: white;
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   text-align: center;
 }
 
@@ -165,14 +170,14 @@
   color: #666;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Table */
 .user-table-container {
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   margin-bottom: 20px;
 }
@@ -315,7 +320,7 @@
   padding: 20px;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .pagination button {
@@ -349,14 +354,14 @@
 .modal-overlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 250px;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .modal {
@@ -495,7 +500,7 @@
   .user-table-container {
     overflow-x: auto;
   }
-  
+
   .user-table {
     min-width: 800px;
   }
@@ -505,29 +510,29 @@
   .user-management {
     padding: 15px;
   }
-  
+
   .user-management-controls {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .search-box {
     min-width: auto;
   }
-  
+
   .filter-box {
     min-width: auto;
   }
-  
+
   .user-stats {
     grid-template-columns: 1fr 1fr;
   }
-  
+
   .pagination {
     flex-direction: column;
     gap: 10px;
   }
-  
+
   .modal {
     width: 95%;
     margin: 10px;
@@ -538,18 +543,18 @@
   .user-management-header h1 {
     font-size: 24px;
   }
-  
+
   .user-table th,
   .user-table td {
     padding: 10px 8px;
     font-size: 12px;
   }
-  
+
   .action-buttons {
     flex-direction: column;
     gap: 4px;
   }
-  
+
   .user-stats {
     grid-template-columns: 1fr;
   }

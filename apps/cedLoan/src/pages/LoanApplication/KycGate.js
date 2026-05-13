@@ -24,6 +24,7 @@ import KycEducationInfo from "./kyc/EducationInfo";
 import KycEmergencyContacts from "./kyc/EmergencyContacts";
 import KycIdVerification from "./kyc/IdVerification";
 
+// KYC steps per blueprint (personal info collected at registration)
 const STEPS = ["work", "education", "emergency-contacts", "id-verification"];
 const STEP_LABELS = [
   "Work Info",
@@ -147,6 +148,7 @@ const KycGate = () => {
               saveStepData(data);
               goToNextStep();
             }}
+            onBack={goToPrevStep}
           />
         )}
         {currentStep === 1 && (

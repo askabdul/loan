@@ -32,6 +32,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -44,7 +45,8 @@
 }
 
 .page-container {
-  padding-bottom: 90px; /* Increased space for bottom navigation */
+  padding-bottom: 90px;
+  /* Increased space for bottom navigation */
   min-height: calc(100vh - 90px);
 }
 
@@ -66,16 +68,17 @@ body {
     padding-left: 8px !important;
     padding-right: 8px !important;
   }
-  
+
   .page-container {
-    padding-bottom: 100px; /* Extra space on mobile for better accessibility */
+    padding-bottom: 100px;
+    /* Extra space on mobile for better accessibility */
   }
-  
+
   /* Extra margin for bottom buttons on mobile */
   .btn-custom, .d-grid {
     margin-bottom: 20px !important;
   }
-  
+
   /* Specific styling for action buttons at page bottom */
   .page-bottom-actions {
     margin-bottom: 30px !important;
@@ -142,38 +145,117 @@ body {
     padding: 6px 0 8px 0;
     height: 65px;
   }
-  
+
   .nav-item {
     padding: 6px 10px;
     min-width: 60px;
   }
-  
+
   .nav-icon {
     font-size: 20px;
     margin-bottom: 3px;
   }
-  
+
   .nav-label {
     font-size: 11px;
   }
 }
+
+/* ── Mobile-first responsive improvements ── */
+
+/* Ensure all page wrappers never overflow horizontally */
+* {
+  box-sizing: border-box;
+}
+
+/* Very small screens (320px – 359px): tighten outer padding */
+@media (max-width: 359px) {
+
+  /* Tailwind px-4 = 16px each side — reduce to 12px on tiny phones */
+  .max-w-xl {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Make button text slightly smaller so they don't wrap */
+  button {
+    font-size: 0.75rem !important;
+  }
+
+  /* Reduce card inner padding */
+  .rounded-2xl {
+    padding: 1rem !important;
+  }
+}
+
+/* Small screens (360px – 479px): standard mobile */
+@media (min-width: 360px) and (max-width: 479px) {
+
+  /* Ensure slider inputs are touch-friendly */
+  input[type="range"] {
+    height: 28px;
+    cursor: pointer;
+  }
+}
+
+/* Medium-small (480px – 575px): slightly larger phones / small tablets */
+@media (min-width: 480px) and (max-width: 575px) {
+
+  /* Cards can breathe a bit more */
+  .max-w-xl {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Ensure inputs and selects are at least 44px tall for touch targets */
+input,
+select,
+textarea {
+  min-height: 44px;
+}
+
+/* Range slider touch target */
+input[type="range"] {
+  min-height: 28px;
+}
+
+/* Prevent overflow in tables on small screens */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Smooth scrolling for the whole app */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Safe area insets for notched phones (iPhone X+) */
+.bottom-navigation {
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+
+.pb-28 {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
 
 @media (min-width: 1024px) {
   .bottom-navigation {
     padding: 8px 0;
     height: 70px;
   }
-  
+
   .nav-item {
     padding: 8px 12px;
     min-width: 70px;
   }
-  
+
   .nav-icon {
     font-size: 22px;
     margin-bottom: 4px;
   }
-  
+
   .nav-label {
     font-size: 12px;
   }
@@ -209,11 +291,11 @@ body {
     margin: -8px -8px 12px -8px;
     border-radius: 0 0 12px 12px;
   }
-  
+
   .page-title {
     font-size: 18px;
   }
-  
+
   .page-subtitle {
     font-size: 12px;
   }
@@ -226,11 +308,11 @@ body {
     margin-bottom: 20px;
     border-radius: 0 0 20px 20px;
   }
-  
+
   .page-title {
     font-size: 24px;
   }
-  
+
   .page-subtitle {
     font-size: 14px;
     margin: 5px 0 0 0;
@@ -278,11 +360,11 @@ body {
     margin-bottom: 10px;
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
   }
-  
+
   .custom-card .card-body {
     padding: 12px;
   }
-  
+
   .btn-custom {
     border-radius: 16px;
     padding: 8px 16px;
@@ -298,23 +380,23 @@ body {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
     margin-bottom: 20px;
   }
-  
+
   .custom-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
   }
-  
+
   .custom-card .card-body {
     padding: 25px;
   }
-  
+
   .btn-custom {
     border-radius: 25px;
     padding: 12px 30px;
     font-size: 15px;
     letter-spacing: 0.5px;
   }
-  
+
   .btn-custom:hover {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   }
@@ -469,21 +551,21 @@ body {
   .page-container {
     padding: 10px;
   }
-  
+
   .custom-card .card-body {
     padding: 20px;
   }
-  
+
   .page-title {
     font-size: 20px;
   }
-  
+
   .form-container {
     margin: 1rem;
     padding: 1.5rem;
     border-radius: 16px;
   }
-  
+
   .form-header h1 {
     font-size: 1.75rem;
   }

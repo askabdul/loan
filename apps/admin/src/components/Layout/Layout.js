@@ -3,7 +3,7 @@ import { toast } from "react-toastify";
 import { useAuth } from "../../contexts/AuthContext";
 import websocketService from "../../services/websocket";
 import Sidebar from "../Sidebar/Sidebar";
-import TabBar from "../TabBar";
+import TabBar from "./../TabBar/TabBar";
 import "./Layout.css";
 
 const Layout = ({ children }) => {
@@ -21,6 +21,37 @@ const Layout = ({ children }) => {
         `💰 A customer has requested disbursement for ${amount}. Go to Credit Review → Approved tab.`,
         { autoClose: 8000, toastId: `disbursement-${data.loanId}` },
       );
+    });
+    return unsub;
+  }, []);
+
+  // Listen for customer receipt confirmations — admin can now activate the loan
+  useEffect(() => {
+    const unsub = websocketService.on("receipt-confirmed", (data) => {
+      toast.success(
+        `✅ Customer confirmed receipt of funds for Loan #${data.loanRef || data.loanId?.slice(-6)}. You can now activate the loan in Credit Review → Disbursed tab.`,
+        { autoClose: 12000, toastId: `receipt-${data.loanId}` },
+      );
+      // Broadcast to any open loan detail panels so they can refresh
+      window.dispatchEvent(
+        new CustomEvent("adminReceiptConfirmed", { detail: data }),
+      );
+    });
+    return unsub;
+  }, []);
+
+  // Listen for new loan applications submitted by customers
+  useEffect(() => {
+    const unsub = websocketService.on("new-loan-application", (data) => {
+      const amount = data.amount
+        ? `GHS ${parseFloat(data.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "a new loan";
+      toast.info(
+        `📋 New loan application received for ${amount}. Check Credit Review → Pending Assign.`,
+        { autoClose: 10000, toastId: `newloan-${data.loanId}` },
+      );
+      // Dispatch browser event so LoanDetails / CreditReviewList can update badge
+      window.dispatchEvent(new CustomEvent("adminNewLoan", { detail: data }));
     });
     return unsub;
   }, []);

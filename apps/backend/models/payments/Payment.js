@@ -27,7 +27,7 @@ const Payment = sequelize.define(
       allowNull: false,
     },
     mobileMoneyProvider: {
-      type: DataTypes.ENUM("MTN", "Hubtel", "AirtelTigo"),
+      type: DataTypes.ENUM("MTN", "Telecel", "AirtelTigo"),
       allowNull: false,
     },
     mobileNumber: {
