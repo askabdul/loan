@@ -24,8 +24,13 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .page-header {
@@ -129,12 +134,12 @@
   border: 1px solid #e9ecef;
   border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: box-shadow 0.2s ease;
 }
 
 .content-item:hover {
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .content-header {
@@ -296,14 +301,14 @@
 .modal-overlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 250px;
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
 }
 
 .modal-content {
@@ -404,46 +409,46 @@
   .content-management {
     padding: 15px;
   }
-  
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 15px;
   }
-  
+
   .content-filters {
     flex-direction: column;
     gap: 15px;
   }
-  
+
   .search-box {
     margin-right: 0;
     max-width: none;
   }
-  
+
   .filter-group {
     flex-wrap: wrap;
   }
-  
+
   .content-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
   }
-  
+
   .content-header h3 {
     margin-right: 0;
   }
-  
+
   .content-meta {
     flex-direction: column;
     gap: 5px;
   }
-  
+
   .form-row {
     grid-template-columns: 1fr;
   }
-  
+
   .modal-content {
     width: 95%;
     margin: 20px;

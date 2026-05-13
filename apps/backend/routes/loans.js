@@ -274,13 +274,24 @@ router.post(
       });
 
       const io = req.app.get("io");
-      if (io)
+      if (io) {
+        // Notify the customer
         io.to(`user-${req.user.id}`).emit("loan-status-changed", {
           loanId: loan.id,
           status: loan.status,
           amount: loan.amount,
           message: "Your loan application has been submitted successfully!",
         });
+        // Notify all admin sessions so the pending-applications badge updates
+        io.to("loan_updates").emit("new-loan-application", {
+          loanId: loan.id,
+          loanRef: loan.loanId,
+          userId: loan.userId,
+          amount: loan.amount,
+          status: loan.status,
+          submittedAt: new Date(),
+        });
+      }
 
       res.status(201).json({
         success: true,
@@ -481,6 +492,19 @@ router.post("/:id/request-disbursement", auth, async (req, res) => {
         message: "Loan not found or not in approved status",
       });
 
+    // Prevent duplicate disbursement requests
+    const alreadyRequested = (loan.adminNotes || []).some(
+      (n) => n.type === "disbursement_request",
+    );
+    if (alreadyRequested) {
+      return res.json({
+        success: true,
+        alreadyRequested: true,
+        message:
+          "Disbursement request was already submitted. Awaiting admin processing.",
+      });
+    }
+
     // Mark with a disbursementRequestedAt note in adminNotes
     const notes = [...(loan.adminNotes || [])];
     notes.push({
@@ -509,6 +533,63 @@ router.post("/:id/request-disbursement", auth, async (req, res) => {
     });
   } catch (err) {
     console.error("Error requesting disbursement:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// POST /api/loans/:id/confirm-receipt  (customer confirms they received disbursed funds)
+router.post("/:id/confirm-receipt", auth, async (req, res) => {
+  try {
+    const loan = await Loan.findOne({
+      where: {
+        id: req.params.id,
+        userId: req.user.id,
+        status: "disbursed",
+      },
+    });
+    if (!loan)
+      return res.status(404).json({
+        success: false,
+        message: "Loan not found or not in disbursed status",
+      });
+
+    // Prevent duplicate confirmations
+    const alreadyConfirmed = (loan.adminNotes || []).some(
+      (n) => n.type === "receipt_confirmed",
+    );
+    if (alreadyConfirmed) {
+      return res.json({
+        success: true,
+        alreadyConfirmed: true,
+        message: "You have already confirmed receipt of this loan.",
+      });
+    }
+
+    const notes = [...(loan.adminNotes || [])];
+    notes.push({
+      note: "Customer confirmed receipt of disbursed funds",
+      addedAt: new Date(),
+      type: "receipt_confirmed",
+    });
+    await loan.update({ adminNotes: notes });
+
+    // Notify admins via socket so they know they can activate the loan
+    const io = req.app.get("io");
+    if (io) {
+      io.to("loan_updates").emit("receipt-confirmed", {
+        loanId: loan.id,
+        loanRef: loan.loanId,
+        userId: loan.userId,
+        confirmedAt: new Date(),
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Receipt confirmed. The admin will now activate your loan.",
+    });
+  } catch (err) {
+    console.error("Error confirming receipt:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -1124,6 +1205,114 @@ router.put(
       res
         .status(500)
         .json({ success: false, message: "Server error updating hang status" });
+    }
+  },
+);
+
+// GET /api/loans/failed-disbursements (admin)
+// Returns approved loans that have a disbursement failure flag or are awaiting disbursement.
+router.get("/failed-disbursements", adminAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const pageNum = parseInt(page),
+      limitNum = parseInt(limit);
+    const { count, rows: loans } = await Loan.findAndCountAll({
+      where: {
+        [Op.or]: [
+          // Approved but not yet disbursed — may have failed automatically
+          { status: "approved", disbursementFailedAt: { [Op.ne]: null } },
+          // Fallback: approved with disbursementFailureReason set
+          { status: "approved", disbursementFailureReason: { [Op.ne]: null } },
+        ],
+      },
+      include: [loanUserInclude],
+      order: [["updated_at", "DESC"]],
+      limit: limitNum,
+      offset: (pageNum - 1) * limitNum,
+    });
+    res.json({
+      success: true,
+      loans,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: count,
+        pages: Math.ceil(count / limitNum),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// POST /api/loans/:id/disburse/retry (admin) — retry or manually record disbursement
+router.post(
+  "/:id/disburse/retry",
+  adminAuth,
+  [
+    body("channel").isIn(["momo", "bank", "cash", "manual"]),
+    body("reference").notEmpty().isString(),
+    body("disbursedAmount").optional().isNumeric(),
+    body("notes").optional().isString(),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty())
+        return res.status(400).json({ success: false, errors: errors.array() });
+
+      const loan = await Loan.findByPk(req.params.id, {
+        include: [loanUserInclude],
+      });
+      if (!loan || loan.status !== "approved")
+        return res.status(404).json({
+          success: false,
+          message: "Loan not found or not in approved status",
+        });
+
+      const { channel, reference, disbursedAmount, notes } = req.body;
+      const adminNotes = [...(loan.adminNotes || [])];
+      adminNotes.push({
+        note: `Manual disbursement: channel=${channel}, ref=${reference}${notes ? ", " + notes : ""}`,
+        addedBy: req.admin.id,
+        addedAt: new Date(),
+        type: "manual_disbursement",
+      });
+
+      await loan.update({
+        status: "active",
+        disbursementDate: new Date(),
+        disbursementChannel: channel,
+        disbursementReference: reference,
+        disbursementFailedAt: null,
+        disbursementFailureReason: null,
+        remainingBalance: disbursedAmount
+          ? parseFloat(disbursedAmount)
+          : parseFloat(loan.totalAmount),
+        dueDate: new Date(
+          Date.now() + (loan.termInDays || 30) * 24 * 60 * 60 * 1000,
+        ),
+        adminNotes,
+      });
+
+      const io = req.app.get("io");
+      if (io && loan.userId)
+        io.to(`user-${loan.userId}`).emit("loan-status-changed", {
+          loanId: loan.id,
+          status: "active",
+          message: `Your loan of GHS ${parseFloat(loan.amount).toLocaleString()} has been disbursed and is now active.`,
+        });
+
+      await createLoanNotification(loan.userId, loan, "active");
+
+      res.json({
+        success: true,
+        message: "Loan disbursed and activated successfully",
+        loan,
+      });
+    } catch (err) {
+      console.error("Disburse retry error:", err);
+      res.status(500).json({ success: false, message: "Server error" });
     }
   },
 );

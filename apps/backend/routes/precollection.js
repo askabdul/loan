@@ -7,7 +7,7 @@
 const express = require("express");
 const { Op, fn, col } = require("sequelize");
 const { adminAuth } = require("../middleware/auth");
-const { Loan, User, Admin, Payment } = require("../models");
+const { Loan, User, Admin, Payment, Role } = require("../models");
 
 const router = express.Router();
 
@@ -131,12 +131,10 @@ router.post("/bulk-assign", async (req, res) => {
       loanIds.length === 0 ||
       officerIds.length === 0
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "loanIds and officerIds are required arrays",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "loanIds and officerIds are required arrays",
+      });
     }
 
     let assignments = [];
@@ -296,6 +294,135 @@ router.get("/rank1", async (req, res) => {
     res.json({ success: true, data: payments });
   } catch (error) {
     console.error("Pre-collection rank1 error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// ── GET /officer-performance ───────────────────────────────────────────────────
+// Aggregated performance per precollection officer — date range supported
+router.get("/officer-performance", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const roles = await Role.findAll({
+      where: {
+        name: { [Op.in]: ["precollection-officer", "precollection-lead"] },
+      },
+    });
+    const roleIds = roles.map((r) => r.id);
+    const officers = await Admin.findAll({
+      where: { roleId: { [Op.in]: roleIds }, isActive: true },
+      attributes: ["id", "firstName", "lastName", "username"],
+      include: [
+        { model: Role, as: "Role", attributes: ["name", "displayName"] },
+      ],
+    });
+
+    const dateFilter = {};
+    if (startDate) dateFilter[Op.gte] = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateFilter[Op.lte] = end;
+    }
+
+    const data = await Promise.all(
+      officers.map(async (officer) => {
+        const totalAssigned = await Loan.count({
+          where: {
+            precollectionOfficerId: officer.id,
+            ...(startDate || endDate ? { updatedAt: dateFilter } : {}),
+          },
+        });
+
+        const fullPayments = await Loan.count({
+          where: {
+            precollectionOfficerId: officer.id,
+            status: "completed",
+            ...(startDate || endDate ? { updatedAt: dateFilter } : {}),
+          },
+        });
+
+        const paySum = await Payment.findOne({
+          where: {
+            status: "completed",
+            ...(startDate || endDate ? { completedAt: dateFilter } : {}),
+          },
+          include: [
+            {
+              model: Loan,
+              as: "Loan",
+              where: { precollectionOfficerId: officer.id },
+              required: true,
+              attributes: [],
+            },
+          ],
+          attributes: [[fn("SUM", col("Payment.amount")), "total"]],
+          raw: true,
+        });
+
+        const totalCollected = parseFloat(paySum?.total || 0);
+        const collectionPercentage =
+          totalAssigned > 0
+            ? ((fullPayments / totalAssigned) * 100).toFixed(1)
+            : "0.0";
+
+        return {
+          id: officer.id,
+          officerName: `${officer.firstName} ${officer.lastName}`,
+          firstName: officer.firstName,
+          lastName: officer.lastName,
+          Role: officer.Role,
+          totalAssigned,
+          totalCollected,
+          fullPayments,
+          collectionPercentage: parseFloat(collectionPercentage),
+        };
+      }),
+    );
+
+    data.sort((a, b) => b.totalCollected - a.totalCollected);
+    res.json({ success: true, officers: data });
+  } catch (err) {
+    console.error("Pre-collection officer-performance error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── GET /officers ─────────────────────────────────────────────────────────────
+// Returns active precollection officers for assignment dropdowns
+router.get("/officers", async (req, res) => {
+  try {
+    const roles = await Role.findAll({
+      where: {
+        name: { [Op.in]: ["precollection-officer", "precollection-lead"] },
+      },
+    });
+    const roleIds = roles.map((r) => r.id);
+
+    const officers = await Admin.findAll({
+      where: { roleId: { [Op.in]: roleIds }, isActive: true },
+      attributes: ["id", "firstName", "lastName", "username", "employeeNumber"],
+      include: [
+        { model: Role, as: "Role", attributes: ["name", "displayName"] },
+      ],
+    });
+
+    const withCounts = await Promise.all(
+      officers.map(async (o) => {
+        const activeCases = await Loan.count({
+          where: {
+            precollectionOfficerId: o.id,
+            precollectionStatus: "assigned",
+          },
+        });
+        return { ...o.toJSON(), activeCases };
+      }),
+    );
+
+    res.json({ success: true, officers: withCounts });
+  } catch (error) {
+    console.error("Get precollection officers error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });

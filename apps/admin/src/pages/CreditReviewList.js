@@ -180,6 +180,27 @@ const CreditReviewList = () => {
     return () => clearTimeout(delayedSearch);
   }, [searchTerm]);
 
+  // Refresh the open loan detail modal when customer confirms receipt
+  useEffect(() => {
+    const onReceipt = async (e) => {
+      const { loanId } = e.detail || {};
+      // Refresh list so adminNotes column is updated
+      fetchApplications();
+      // If this specific loan is open in the modal, refresh it
+      if (selectedLoan && selectedLoan.id === loanId) {
+        try {
+          const response = await apiService.getLoanById(loanId);
+          const refreshed = response.data?.loan || response.loan;
+          if (refreshed) setSelectedLoan(refreshed);
+        } catch (_) {
+          // Non-critical — the modal will still show
+        }
+      }
+    };
+    window.addEventListener("adminReceiptConfirmed", onReceipt);
+    return () => window.removeEventListener("adminReceiptConfirmed", onReceipt);
+  }, [selectedLoan]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     if (!dropdownState.id) return;

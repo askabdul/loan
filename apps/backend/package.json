@@ -4,7 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "nodemon --ignore uploads/ --ignore '*.old*' --ignore 'node_modules.old*' server.js",
     "db:setup": "node scripts/setupDatabase.js",
     "db:seed": "node scripts/seedAll.js",
     "db:seed:roles": "node scripts/seedRoles.js",
@@ -22,7 +22,7 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
-    "express": "^4.18.2",
+    "express": "^4.22.1",
     "express-rate-limit": "^8.0.1",
     "express-validator": "^7.2.1",
     "firebase-admin": "^13.8.0",

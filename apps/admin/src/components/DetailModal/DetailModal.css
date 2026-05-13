@@ -1,26 +1,27 @@
 .detail-modal-overlay {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 250px;
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 9999;
+  padding: 16px;
 }
 
 .detail-modal {
   background: white;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 1200px;
-  max-height: 95vh;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
 }
 
 .detail-modal-header {

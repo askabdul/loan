@@ -411,6 +411,14 @@ const DetailModal = ({
 
   const canAction = canReview || canDisburse || canActivate;
 
+  // Derived flags from adminNotes for contextual UI hints
+  const customerRequestedDisbursement = (data.adminNotes || []).some(
+    (n) => n.type === "disbursement_request",
+  );
+  const customerConfirmedReceipt = (data.adminNotes || []).some(
+    (n) => n.type === "receipt_confirmed",
+  );
+
   const handleAction = (action) => {
     setReviewAction(action);
     setShowReviewForm(true);
@@ -512,9 +520,13 @@ const DetailModal = ({
                 <span className="dm-actions-label">
                   <FiClock size={13} />
                   {canDisburse
-                    ? " Ready to disburse"
+                    ? customerRequestedDisbursement
+                      ? " Customer requested disbursement"
+                      : " Approved — awaiting disbursement"
                     : canActivate
-                      ? " Disbursed — awaiting activation"
+                      ? customerConfirmedReceipt
+                        ? " Customer confirmed receipt — ready to activate"
+                        : " Disbursed — awaiting customer confirmation"
                       : " Awaiting decision"}
                 </span>
                 <div className="dm-action-btns">

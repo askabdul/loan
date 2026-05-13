@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
 import { toast } from "react-toastify";
 import {
@@ -18,14 +18,152 @@ import IdCardModal from "../components/IdCardModal";
 const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:8001/api";
 
+const inputCls =
+  "w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+const labelCls =
+  "block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide";
+
+const AdminFormFields = ({
+  formData,
+  handleInputChange,
+  roles,
+  errors,
+  onSubmit,
+  submitLabel,
+  onCancel,
+}) => (
+  <form onSubmit={onSubmit} className="p-6 space-y-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {[
+        {
+          label: "First Name",
+          name: "firstName",
+          type: "text",
+          required: true,
+        },
+        { label: "Last Name", name: "lastName", type: "text", required: true },
+        { label: "Email", name: "email", type: "email", required: true },
+        { label: "Username", name: "username", type: "text", required: true },
+        {
+          label: "Phone Number",
+          name: "phoneNumber",
+          type: "tel",
+          required: true,
+        },
+        ...(submitLabel === "Create Admin"
+          ? [
+              {
+                label: "Password",
+                name: "password",
+                type: "password",
+                required: true,
+              },
+            ]
+          : []),
+        {
+          label: "Designation",
+          name: "designation",
+          type: "text",
+          required: true,
+          placeholder: "e.g., Manager, Officer",
+        },
+        {
+          label: "Date Joined",
+          name: "dateJoined",
+          type: "date",
+          required: true,
+        },
+        {
+          label: "Date of Expiry",
+          name: "dateOfExpiry",
+          type: "date",
+          required: true,
+        },
+      ].map(({ label, name, type, required, placeholder }) => (
+        <div key={name}>
+          <label className={labelCls}>{label}</label>
+          <input
+            type={type}
+            name={name}
+            value={formData[name] || ""}
+            onChange={handleInputChange}
+            required={required}
+            placeholder={placeholder}
+            className={inputCls}
+          />
+          {errors[name] && (
+            <p className="text-xs text-red-600 mt-1">{errors[name]}</p>
+          )}
+        </div>
+      ))}
+      <div>
+        <label className={labelCls}>Role</label>
+        <select
+          name="role"
+          value={formData.role}
+          onChange={handleInputChange}
+          required
+          className={inputCls}
+        >
+          <option value="">Select Role</option>
+          {roles.map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.displayName}
+            </option>
+          ))}
+        </select>
+        {errors.role && (
+          <p className="text-xs text-red-600 mt-1">{errors.role}</p>
+        )}
+      </div>
+      <div>
+        <label className={labelCls}>Profile Image (Optional)</label>
+        <input
+          type="file"
+          name="profileImage"
+          onChange={handleInputChange}
+          accept="image/*"
+          className={
+            inputCls +
+            " file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700"
+          }
+        />
+      </div>
+    </div>
+    <div className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        name="isActive"
+        id="isActive"
+        checked={formData.isActive}
+        onChange={handleInputChange}
+        className="rounded"
+      />
+      <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
+        Active
+      </label>
+    </div>
+    <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition"
+      >
+        {submitLabel}
+      </button>
+    </div>
+  </form>
+);
+
 const AdminManagement = () => {
-  const {
-    hasActionPermission,
-    hasButtonAccess,
-    hasTableAccess,
-    hasModalAccess,
-    hasFormAccess,
-  } = useAuth();
+  const { hasActionPermission, hasButtonAccess, hasTableAccess, isSuperAdmin } =
+    useAuth();
 
   const [admins, setAdmins] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -42,7 +180,7 @@ const AdminManagement = () => {
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [searchTimeout, setSearchTimeout] = useState(null);
+  const searchTimeoutRef = useRef(null);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -194,7 +332,7 @@ const AdminManagement = () => {
   const handleEditAdmin = async (e) => {
     e.preventDefault();
 
-    if (!selectedAdmin || !selectedAdmin._id) {
+    if (!selectedAdmin || !selectedAdmin.id) {
       toast.error("No admin selected for editing");
       return;
     }
@@ -202,7 +340,7 @@ const AdminManagement = () => {
     try {
       const token = localStorage.getItem("adminToken");
       const response = await fetch(
-        `${API_BASE_URL}/admin-management/admins/${selectedAdmin._id}`,
+        `${API_BASE_URL}/admin-management/admins/${selectedAdmin.id}`,
         {
           method: "PUT",
           headers: {
@@ -298,7 +436,7 @@ const AdminManagement = () => {
       email: admin.email || "",
       username: admin.username || "",
       phoneNumber: admin.phoneNumber || "",
-      role: admin.role?._id || "",
+      role: admin.role?.id || admin.roleId || "",
       designation: admin.designation || "",
       dateJoined: admin.dateJoined
         ? new Date(admin.dateJoined).toISOString().split("T")[0]
@@ -322,12 +460,10 @@ const AdminManagement = () => {
     setSearchTerm(value);
     setCurrentPage(1);
 
-    // Debounce search to avoid too many API calls
-    clearTimeout(searchTimeout);
-    const timeout = setTimeout(() => {
+    clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
       fetchAdmins(1);
     }, 500);
-    setSearchTimeout(timeout);
   };
 
   const handleInputChange = (e) => {
@@ -354,149 +490,6 @@ const AdminManagement = () => {
     };
     return colors[roleName] || "bg-gray-100 text-gray-800";
   };
-
-  const inputCls =
-    "w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
-  const labelCls =
-    "block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide";
-
-  const AdminFormFields = ({ onSubmit, submitLabel }) => (
-    <form onSubmit={onSubmit} className="p-6 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {[
-          {
-            label: "First Name",
-            name: "firstName",
-            type: "text",
-            required: true,
-          },
-          {
-            label: "Last Name",
-            name: "lastName",
-            type: "text",
-            required: true,
-          },
-          { label: "Email", name: "email", type: "email", required: true },
-          { label: "Username", name: "username", type: "text", required: true },
-          {
-            label: "Phone Number",
-            name: "phoneNumber",
-            type: "tel",
-            required: true,
-          },
-          ...(submitLabel === "Create Admin"
-            ? [
-                {
-                  label: "Password",
-                  name: "password",
-                  type: "password",
-                  required: true,
-                },
-              ]
-            : []),
-          {
-            label: "Designation",
-            name: "designation",
-            type: "text",
-            required: true,
-            placeholder: "e.g., Manager, Officer",
-          },
-          {
-            label: "Date Joined",
-            name: "dateJoined",
-            type: "date",
-            required: true,
-          },
-          {
-            label: "Date of Expiry",
-            name: "dateOfExpiry",
-            type: "date",
-            required: true,
-          },
-        ].map(({ label, name, type, required, placeholder }) => (
-          <div key={name}>
-            <label className={labelCls}>{label}</label>
-            <input
-              type={type}
-              name={name}
-              value={formData[name] || ""}
-              onChange={handleInputChange}
-              required={required}
-              placeholder={placeholder}
-              className={inputCls}
-            />
-            {errors[name] && (
-              <p className="text-xs text-red-600 mt-1">{errors[name]}</p>
-            )}
-          </div>
-        ))}
-        <div>
-          <label className={labelCls}>Role</label>
-          <select
-            name="role"
-            value={formData.role}
-            onChange={handleInputChange}
-            required
-            className={inputCls}
-          >
-            <option value="">Select Role</option>
-            {roles.map((role) => (
-              <option key={role._id} value={role._id}>
-                {role.displayName}
-              </option>
-            ))}
-          </select>
-          {errors.role && (
-            <p className="text-xs text-red-600 mt-1">{errors.role}</p>
-          )}
-        </div>
-        <div>
-          <label className={labelCls}>Profile Image (Optional)</label>
-          <input
-            type="file"
-            name="profileImage"
-            onChange={handleInputChange}
-            accept="image/*"
-            className={
-              inputCls +
-              " file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700"
-            }
-          />
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          name="isActive"
-          id="isActive"
-          checked={formData.isActive}
-          onChange={handleInputChange}
-          className="rounded"
-        />
-        <label htmlFor="isActive" className="text-sm font-medium text-gray-700">
-          Active
-        </label>
-      </div>
-      <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={() => {
-            setShowCreateModal(false);
-            setShowEditModal(false);
-          }}
-          className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition"
-        >
-          {submitLabel}
-        </button>
-      </div>
-    </form>
-  );
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen w-full">
@@ -564,7 +557,7 @@ const AdminManagement = () => {
           >
             <option value="">All Roles</option>
             {roles.map((role) => (
-              <option key={role._id} value={role._id}>
+              <option key={role.id} value={role.id}>
                 {role.displayName}
               </option>
             ))}
@@ -598,130 +591,128 @@ const AdminManagement = () => {
           admins...
         </div>
       ) : (
-        hasTableAccess("adminTable") && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto mb-5 w-full">
-            <table className="w-full text-sm" style={{ minWidth: "700px" }}>
-              <colgroup>
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "12%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "8%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
-              </colgroup>
-              <thead>
-                <tr className="bg-gray-50">
-                  {[
-                    "Name",
-                    "Employee #",
-                    "Email",
-                    "Phone",
-                    "Role",
-                    "Status",
-                    "Created",
-                    "Actions",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 text-left"
-                    >
-                      {h}
-                    </th>
-                  ))}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto mb-5 w-full">
+          <table className="w-full text-sm" style={{ minWidth: "700px" }}>
+            <colgroup>
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+            </colgroup>
+            <thead>
+              <tr className="bg-gray-50">
+                {[
+                  "Name",
+                  "Employee #",
+                  "Email",
+                  "Phone",
+                  "Role",
+                  "Status",
+                  "Created",
+                  "Actions",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 text-left"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {admins.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-4 py-12 text-center text-sm text-gray-400"
+                  >
+                    No admins found
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {admins.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-4 py-12 text-center text-sm text-gray-400"
-                    >
-                      No admins found
+              ) : (
+                admins.map((admin) => (
+                  <tr
+                    key={admin.id}
+                    className="hover:bg-gray-50/50 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-medium text-gray-800 text-sm">
+                      {admin.firstName} {admin.lastName}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-gray-600">
+                      {admin.employeeNumber || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {admin.email}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {admin.phoneNumber}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getRoleBadgeColor(admin.role?.name || "")}`}
+                      >
+                        {admin.role?.displayName ||
+                          admin.role?.name ||
+                          "No Role"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${admin.isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}
+                      >
+                        {admin.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      {admin.createdAt
+                        ? new Date(admin.createdAt).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openIdCardModal(admin)}
+                          title="View ID Card"
+                          className="px-2 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 transition"
+                        >
+                          🆔
+                        </button>
+                        {(hasActionPermission("editAdmin") ||
+                          hasButtonAccess("editAdmin")) && (
+                          <button
+                            onClick={() => openEditModal(admin)}
+                            title="Edit"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 transition"
+                          >
+                            <FiEdit size={13} />
+                          </button>
+                        )}
+                        {(hasActionPermission("deleteAdmin") ||
+                          hasButtonAccess("deleteAdmin")) && (
+                          <button
+                            onClick={() =>
+                              admin.id && handleDeleteAdmin(admin.id)
+                            }
+                            disabled={!admin.id}
+                            title="Delete"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <FiTrash2 size={13} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                ) : (
-                  admins.map((admin) => (
-                    <tr
-                      key={admin._id}
-                      className="hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-800 text-sm">
-                        {admin.firstName} {admin.lastName}
-                      </td>
-                      <td className="px-4 py-3 text-xs font-mono text-gray-600">
-                        {admin.employeeNumber || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {admin.email}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {admin.phoneNumber}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getRoleBadgeColor(admin.role?.name || "")}`}
-                        >
-                          {admin.role?.displayName ||
-                            admin.role?.name ||
-                            "No Role"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${admin.isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}
-                        >
-                          {admin.isActive ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        {admin.createdAt
-                          ? new Date(admin.createdAt).toLocaleDateString()
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => openIdCardModal(admin)}
-                            title="View ID Card"
-                            className="px-2 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 transition"
-                          >
-                            🆔
-                          </button>
-                          {(hasActionPermission("editAdmin") ||
-                            hasButtonAccess("editAdmin")) && (
-                            <button
-                              onClick={() => openEditModal(admin)}
-                              title="Edit"
-                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 transition"
-                            >
-                              <FiEdit size={13} />
-                            </button>
-                          )}
-                          {(hasActionPermission("deleteAdmin") ||
-                            hasButtonAccess("deleteAdmin")) && (
-                            <button
-                              onClick={() =>
-                                admin._id && handleDeleteAdmin(admin._id)
-                              }
-                              disabled={!admin._id}
-                              title="Delete"
-                              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <FiTrash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Pagination */}
@@ -759,12 +750,15 @@ const AdminManagement = () => {
 
       {/* Create Modal */}
       {showCreateModal &&
-        hasModalAccess("adminCreateModal") &&
+        (hasActionPermission("createAdmin") || isSuperAdmin()) &&
         ReactDOM.createPortal(
           <div
             style={{
               position: "fixed",
-              inset: 0,
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
               zIndex: 1200,
               display: "flex",
               alignItems: "center",
@@ -775,7 +769,10 @@ const AdminManagement = () => {
             <div
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 background: "rgba(0,0,0,0.4)",
               }}
               onClick={() => setShowCreateModal(false)}
@@ -803,12 +800,15 @@ const AdminManagement = () => {
                   <FiX size={16} />
                 </button>
               </div>
-              {hasFormAccess("adminCreateForm") && (
-                <AdminFormFields
-                  onSubmit={handleCreateAdmin}
-                  submitLabel="Create Admin"
-                />
-              )}
+              <AdminFormFields
+                formData={formData}
+                handleInputChange={handleInputChange}
+                roles={roles}
+                errors={errors}
+                onSubmit={handleCreateAdmin}
+                submitLabel="Create Admin"
+                onCancel={() => setShowCreateModal(false)}
+              />
             </div>
           </div>,
           document.body,
@@ -816,12 +816,15 @@ const AdminManagement = () => {
 
       {/* Edit Modal */}
       {showEditModal &&
-        hasModalAccess("adminEditModal") &&
+        (hasActionPermission("editAdmin") || isSuperAdmin()) &&
         ReactDOM.createPortal(
           <div
             style={{
               position: "fixed",
-              inset: 0,
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
               zIndex: 1200,
               display: "flex",
               alignItems: "center",
@@ -832,7 +835,10 @@ const AdminManagement = () => {
             <div
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 background: "rgba(0,0,0,0.4)",
               }}
               onClick={() => setShowEditModal(false)}
@@ -860,12 +866,15 @@ const AdminManagement = () => {
                   <FiX size={16} />
                 </button>
               </div>
-              {hasFormAccess("adminEditForm") && (
-                <AdminFormFields
-                  onSubmit={handleEditAdmin}
-                  submitLabel="Update Admin"
-                />
-              )}
+              <AdminFormFields
+                formData={formData}
+                handleInputChange={handleInputChange}
+                roles={roles}
+                errors={errors}
+                onSubmit={handleEditAdmin}
+                submitLabel="Update Admin"
+                onCancel={() => setShowEditModal(false)}
+              />
             </div>
           </div>,
           document.body,
@@ -877,7 +886,10 @@ const AdminManagement = () => {
           <div
             style={{
               position: "fixed",
-              inset: 0,
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
               zIndex: 1200,
               display: "flex",
               alignItems: "center",
@@ -888,7 +900,10 @@ const AdminManagement = () => {
             <div
               style={{
                 position: "absolute",
-                inset: 0,
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 background: "rgba(0,0,0,0.4)",
               }}
               onClick={() => setShowDeleteModal(false)}

@@ -120,30 +120,22 @@ const Sidebar = () => {
         },
       ],
     },
-    {
-      id: "marketing",
-      title: "Marketing",
-      icon: <FiTrendingUp />,
-      path: "/marketing",
-      hasSubmenu: false,
-      menuKey: "marketing",
-    },
-    {
-      id: "notifications",
-      title: "Notification Management",
-      icon: <FiBell />,
-      path: "/notifications",
-      hasSubmenu: false,
-      menuKey: "notificationManagement",
-    },
-    {
-      id: "roles",
-      title: "Role Management",
-      icon: <FiShield />,
-      path: "/roles",
-      hasSubmenu: false,
-      menuKey: "roleManagement",
-    },
+    // {
+    //   id: "marketing",
+    //   title: "Marketing",
+    //   icon: <FiTrendingUp />,
+    //   path: "/marketing",
+    //   hasSubmenu: false,
+    //   menuKey: "marketing",
+    // },
+    // {
+    //   id: "notifications",
+    //   title: "Notification Management",
+    //   icon: <FiBell />,
+    //   path: "/notifications",
+    //   hasSubmenu: false,
+    //   menuKey: "notificationManagement",
+    // },
     {
       id: "order",
       title: "Order",
@@ -152,62 +144,31 @@ const Sidebar = () => {
       hasSubmenu: true,
       menuKey: "order",
       submenu: [
-        { title: "OrderList", path: "/order/list", subMenuKey: "orderList" },
+        { title: "Order List", path: "/order/list", subMenuKey: "orderList" },
         {
           title: "Order Lending",
           path: "/order/lending",
           subMenuKey: "orderLending",
         },
         {
-          title: "Payment failed",
-          path: "/order/payment-failed",
-          subMenuKey: "paymentFailed",
-        },
-        {
-          title: "Loan Details",
-          path: "/order/loan-details",
-          subMenuKey: "loanDetails",
-        },
-        {
-          title: "Repayment Plan",
-          path: "/order/repayment-plan",
-          subMenuKey: "repaymentPlan",
-        },
-        {
-          title: "Repayment Details",
-          path: "/order/repayment-details",
-          subMenuKey: "repaymentDetails",
-        },
-        {
-          title: "RepayPending",
-          path: "/order/repay-pending",
-          subMenuKey: "repayPending",
-        },
-        {
           title: "Order Repayment",
           path: "/order/repayment",
           subMenuKey: "orderRepayment",
         },
-        { title: "USSD Order", path: "/order/ussd", subMenuKey: "ussdOrder" },
+        {
+          title: "Review Repayment",
+          path: "/order/review-repayment",
+          subMenuKey: "reviewRepayment",
+        },
         {
           title: "Extension Order",
           path: "/order/extension",
           subMenuKey: "extensionOrder",
         },
         {
-          title: "Review repayment",
-          path: "/order/review-repayment",
-          subMenuKey: "reviewRepayment",
-        },
-        {
-          title: "Callback Order",
-          path: "/order/callback",
-          subMenuKey: "callbackOrder",
-        },
-        {
-          title: "CanBeSettled",
-          path: "/order/can-be-settled",
-          subMenuKey: "canBeSettled",
+          title: "Loan Details",
+          path: "/order/loan-details",
+          subMenuKey: "loanDetails",
         },
       ],
     },
@@ -219,46 +180,46 @@ const Sidebar = () => {
       hasSubmenu: true,
       menuKey: "fundManagement",
       submenu: [
-        {
-          title: "Payment Order",
-          path: "/fund-management/payment-order",
-          subMenuKey: "paymentOrder",
-        },
-        {
-          title: "Payment Review",
-          path: "/fund-management/payment-review",
-          subMenuKey: "paymentReview",
-        },
+        // {
+        //   title: "Payment Order",
+        //   path: "/fund-management/payment-order",
+        //   subMenuKey: "paymentOrder",
+        // },
+        // {
+        //   title: "Payment Review",
+        //   path: "/fund-management/payment-review",
+        //   subMenuKey: "paymentReview",
+        // },
         {
           title: "Payment Management",
           path: "/fund-management/payments",
           subMenuKey: "paymentManagement",
         },
-        {
-          title: "Bill verification",
-          path: "/fund-management/bill-verification",
-          subMenuKey: "billVerification",
-        },
-        {
-          title: "Airtime",
-          path: "/fund-management/airtime",
-          subMenuKey: "airtime",
-        },
-        {
-          title: "Airtime Review",
-          path: "/fund-management/airtime-review",
-          subMenuKey: "airtimeReview",
-        },
-        {
-          title: "Batch-payment-apply",
-          path: "/fund-management/batch-payment-apply",
-          subMenuKey: "batchPaymentApply",
-        },
-        {
-          title: "AirtimeStat",
-          path: "/fund-management/airtime-stat",
-          subMenuKey: "airtimeStat",
-        },
+        // {
+        //   title: "Bill verification",
+        //   path: "/fund-management/bill-verification",
+        //   subMenuKey: "billVerification",
+        // },
+        // {
+        //   title: "Airtime",
+        //   path: "/fund-management/airtime",
+        //   subMenuKey: "airtime",
+        // },
+        // {
+        //   title: "Airtime Review",
+        //   path: "/fund-management/airtime-review",
+        //   subMenuKey: "airtimeReview",
+        // },
+        // {
+        //   title: "Batch-payment-apply",
+        //   path: "/fund-management/batch-payment-apply",
+        //   subMenuKey: "batchPaymentApply",
+        // },
+        // {
+        //   title: "AirtimeStat",
+        //   path: "/fund-management/airtime-stat",
+        //   subMenuKey: "airtimeStat",
+        // },
       ],
     },
     {
@@ -270,17 +231,20 @@ const Sidebar = () => {
       menuKey: "creditReview",
       submenu: [
         {
-          title: "ShiftList",
-          path: "/credit-review/shift-list",
-          subMenuKey: "shiftList",
-        },
-        {
           title: "Assign",
           path: "/credit-review/assign",
           subMenuKey: "assign",
         },
-        { title: "List", path: "/credit-review/list", subMenuKey: "list" },
-        { title: "Count", path: "/credit-review/count", subMenuKey: "count" },
+        {
+          title: "Review List",
+          path: "/credit-review/list",
+          subMenuKey: "list",
+        },
+        {
+          title: "Statistics",
+          path: "/credit-review/count",
+          subMenuKey: "count",
+        },
       ],
     },
     {
@@ -291,16 +255,16 @@ const Sidebar = () => {
       hasSubmenu: true,
       menuKey: "preCollection",
       submenu: [
-        {
-          title: "ShiftList",
-          path: "/pre-collection/shift-list",
-          subMenuKey: "shiftList",
-        },
-        {
-          title: "Prc-Assign",
-          path: "/pre-collection/assign",
-          subMenuKey: "assign",
-        },
+        // {
+        //   title: "ShiftList",
+        //   path: "/pre-collection/shift-list",
+        //   subMenuKey: "shiftList",
+        // },
+        // {
+        //   title: "Prc-Assign",
+        //   path: "/pre-collection/assign",
+        //   subMenuKey: "assign",
+        // },
         {
           title: "All List (God Mode)",
           path: "/pre-collection/all-list",
@@ -312,38 +276,38 @@ const Sidebar = () => {
           path: "/pre-collection/list",
           subMenuKey: "list",
         },
-        {
-          title: "Prc-Repayment",
-          path: "/pre-collection/repayment",
-          subMenuKey: "repayment",
-        },
-        {
-          title: "Monitor Center",
-          path: "/pre-collection/monitor-center",
-          subMenuKey: "monitorCenter",
-        },
+        // {
+        //   title: "Prc-Repayment",
+        //   path: "/pre-collection/repayment",
+        //   subMenuKey: "repayment",
+        // },
+        // {
+        //   title: "Monitor Center",
+        //   path: "/pre-collection/monitor-center",
+        //   subMenuKey: "monitorCenter",
+        // },
         { title: "Rank1", path: "/pre-collection/rank1", subMenuKey: "rank1" },
         { title: "Rank2", path: "/pre-collection/rank2", subMenuKey: "rank2" },
-        {
-          title: "Prc ColRate",
-          path: "/pre-collection/col-rate",
-          subMenuKey: "colRate",
-        },
-        {
-          title: "AppUsage",
-          path: "/pre-collection/app-usage",
-          subMenuKey: "appUsage",
-        },
-        {
-          title: "Monitor Center 2",
-          path: "/pre-collection/monitor-center-2",
-          subMenuKey: "monitorCenter2",
-        },
-        {
-          title: "HandCases",
-          path: "/pre-collection/hand-cases",
-          subMenuKey: "handCases",
-        },
+        // {
+        //   title: "Prc ColRate",
+        //   path: "/pre-collection/col-rate",
+        //   subMenuKey: "colRate",
+        // },
+        // {
+        //   title: "AppUsage",
+        //   path: "/pre-collection/app-usage",
+        //   subMenuKey: "appUsage",
+        // },
+        // {
+        //   title: "Monitor Center 2",
+        //   path: "/pre-collection/monitor-center-2",
+        //   subMenuKey: "monitorCenter2",
+        // },
+        // {
+        //   title: "HandCases",
+        //   path: "/pre-collection/hand-cases",
+        //   subMenuKey: "handCases",
+        // },
         {
           title: "Payment Record",
           path: "/pre-collection/payment-record",
@@ -359,59 +323,64 @@ const Sidebar = () => {
       hasSubmenu: true,
       menuKey: "collection",
       submenu: [
-        {
-          title: "ShiftList",
-          path: "/collection/shift-list",
-          subMenuKey: "shiftList",
-        },
-        {
-          title: "Col-Assign",
-          path: "/collection/assign",
-          subMenuKey: "assign",
-        },
+        // {
+        //   title: "ShiftList",
+        //   path: "/collection/shift-list",
+        //   subMenuKey: "shiftList",
+        // },
+        // {
+        //   title: "Col-Assign",
+        //   path: "/collection/assign",
+        //   subMenuKey: "assign",
+        // },
         { title: "List", path: "/collection/list", subMenuKey: "list" },
-        {
-          title: "Col-Repayment",
-          path: "/collection/repayment",
-          subMenuKey: "repayment",
-        },
-        {
-          title: "Monitor Center",
-          path: "/collection/monitor-center",
-          subMenuKey: "monitorCenter",
-        },
+        // {
+        //   title: "Col-Repayment",
+        //   path: "/collection/repayment",
+        //   subMenuKey: "repayment",
+        // },
+        // {
+        //   title: "Monitor Center",
+        //   path: "/collection/monitor-center",
+        //   subMenuKey: "monitorCenter",
+        // },
         { title: "Rank1", path: "/collection/rank1", subMenuKey: "rank1" },
         { title: "Rank2", path: "/collection/rank2", subMenuKey: "rank2" },
-        {
-          title: "AppUsage",
-          path: "/collection/app-usage",
-          subMenuKey: "appUsage",
-        },
-        {
-          title: "Monitor Center 2",
-          path: "/collection/monitor-center-2",
-          subMenuKey: "monitorCenter2",
-        },
-        {
-          title: "HandCases",
-          path: "/collection/hand-cases",
-          subMenuKey: "handCases",
-        },
+        // {
+        //   title: "AppUsage",
+        //   path: "/collection/app-usage",
+        //   subMenuKey: "appUsage",
+        // },
+        // {
+        //   title: "Monitor Center 2",
+        //   path: "/collection/monitor-center-2",
+        //   subMenuKey: "monitorCenter2",
+        // },
+        // {
+        //   title: "HandCases",
+        //   path: "/collection/hand-cases",
+        //   subMenuKey: "handCases",
+        // },
         {
           title: "Payment Record",
           path: "/collection/payment-record",
           subMenuKey: "paymentRecord",
         },
+        {
+          title: "Officers",
+          path: "/collection/officers",
+          subMenuKey: "officers",
+        },
       ],
     },
-    {
-      id: "overtime-message",
-      title: "Overtime Message",
-      icon: <FiClock />,
-      path: "/overtime-message",
-      hasSubmenu: false,
-      menuKey: "overtimeMessage",
-    },
+    // {
+    //   id: "overtime-message",
+    //   title: "Overtime Message",
+    //   icon: <FiClock />,
+    //   path: "/overtime-message",
+    //   hasSubmenu: false,
+    //   menuKey: "overtimeMessage",
+    // },
     {
       id: "config",
       title: "Config",
@@ -484,9 +453,14 @@ const Sidebar = () => {
       menuKey: "system",
       submenu: [
         {
-          title: "Admin Management",
+          title: "Admin & Workers",
           path: "/admin-management",
           subMenuKey: "adminManagement",
+        },
+        {
+          title: "Role Management",
+          path: "/roles",
+          subMenuKey: "roleManagement",
         },
       ],
     },

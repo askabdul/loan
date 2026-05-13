@@ -7,6 +7,8 @@ import {
   FiCalendar,
   FiCreditCard,
   FiDollarSign,
+  FiX,
+  FiSend,
 } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import apiService from "../services/api";
@@ -38,33 +40,30 @@ const buildUserViewModel = (payload = {}) => {
     raw: user,
     loans: payload.loans || [],
     payments: payload.payments || [],
-    name:
-      `${user.personalInfo?.firstName || ""} ${user.personalInfo?.lastName || ""}`.trim() ||
-      user.fullName ||
-      "N/A",
+    // PostgreSQL User has flat top-level fields, not nested in personalInfo/workInfo etc.
+    name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "N/A",
     status: user.isActive ? "active" : "suspended",
     email: user.email || "N/A",
     phone: user.phoneNumber || "N/A",
-    dateOfBirth: formatDate(user.personalInfo?.dateOfBirth),
-    gender: user.personalInfo?.gender || "N/A",
-    address: buildAddress(user.personalInfo?.address),
-    occupation:
-      user.workInfo?.jobTitle || user.workInfo?.employmentStatus || "N/A",
-    employer: user.workInfo?.employer || "N/A",
-    monthlyIncome: user.workInfo?.monthlyIncome || 0,
-    employmentStatus: user.workInfo?.employmentStatus || "N/A",
-    educationLevel: user.educationInfo?.highestLevel || "N/A",
-    institution: user.educationInfo?.institution || "N/A",
-    fieldOfStudy: user.educationInfo?.fieldOfStudy || "N/A",
-    graduationYear: user.educationInfo?.graduationYear || "N/A",
-    idType: user.idVerification?.idType || "N/A",
-    idNumber: user.idVerification?.idNumber || "N/A",
-    kycStatus: user.idVerification?.isVerified ? "verified" : "pending",
+    dateOfBirth: formatDate(user.dateOfBirth),
+    gender: user.gender || "N/A",
+    address: buildAddress(user.address || {}),
+    occupation: user.jobTitle || user.employmentStatus || "N/A",
+    employer: user.employer || "N/A",
+    monthlyIncome: user.monthlyIncome || 0,
+    employmentStatus: user.employmentStatus || "N/A",
+    educationLevel: user.educationLevel || "N/A",
+    institution: user.educationInstitution || "N/A",
+    fieldOfStudy: user.fieldOfStudy || "N/A",
+    graduationYear: user.graduationYear || "N/A",
+    idType: user.idType || "N/A",
+    idNumber: user.idNumber || "N/A",
+    kycStatus: user.idVerified ? "verified" : "pending",
     authMethod: user.authMethod || "N/A",
     level: `Level ${user.currentLoanLevel || 1}`,
     registrationComplete: user.registrationComplete ? "Complete" : "Incomplete",
-    id: user.userId || user._id,
-    mongoId: user._id || "N/A",
+    id: user.userId || user.id, // 6-digit display ID, falls back to UUID
+    mongoId: user.id || "N/A", // UUID primary key (labelled as ID in UI)
     registrationDate: formatDate(user.createdAt),
     lastLogin: formatDate(user.lastLogin),
     totalLoans: summary.totalLoans || 0,
@@ -81,13 +80,14 @@ const getBestMatch = (users, searchQuery, searchType) => {
   const query = searchQuery.trim().toLowerCase();
   return (
     users.find((user) => {
-      const firstName = user.personalInfo?.firstName?.toLowerCase() || "";
-      const lastName = user.personalInfo?.lastName?.toLowerCase() || "";
+      // PostgreSQL User has flat fields (not nested in personalInfo)
+      const firstName = user.firstName?.toLowerCase() || "";
+      const lastName = user.lastName?.toLowerCase() || "";
       const fullName = `${firstName} ${lastName}`.trim();
       const email = user.email?.toLowerCase() || "";
       const phoneNumber = user.phoneNumber?.toLowerCase() || "";
-      const userId = user.userId?.toLowerCase() || "";
-      const mongoId = user._id?.toLowerCase() || "";
+      const userId = user.userId?.toLowerCase() || ""; // 6-digit display ID
+      const pgId = user.id?.toLowerCase() || ""; // UUID primary key
 
       switch (searchType) {
         case "email":
@@ -101,14 +101,14 @@ const getBestMatch = (users, searchQuery, searchType) => {
             lastName.includes(query)
           );
         case "id":
-          return userId === query || mongoId === query;
+          return userId === query || pgId === query;
         default:
           return (
             email.includes(query) ||
             phoneNumber.includes(query) ||
             fullName.includes(query) ||
             userId.includes(query) ||
-            mongoId === query
+            pgId === query
           );
       }
     }) || users[0]
@@ -122,6 +122,128 @@ const FindUser = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Modal state
+  const [editModal, setEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const [loanHistoryModal, setLoanHistoryModal] = useState(false);
+
+  const [messageModal, setMessageModal] = useState(false);
+  const [messageForm, setMessageForm] = useState({
+    title: "",
+    message: "",
+    type: "info",
+  });
+  const [messageLoading, setMessageLoading] = useState(false);
+  const [messageError, setMessageError] = useState("");
+
+  const [suspendModal, setSuspendModal] = useState(false);
+  const [suspendLoading, setSuspendLoading] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState("");
+
+  const reloadUser = async (userId) => {
+    try {
+      const detailResponse = await apiService.getUserById(userId);
+      const detailPayload = detailResponse?.data;
+      if (detailPayload?.user) setUser(buildUserViewModel(detailPayload));
+    } catch (_) {}
+  };
+
+  // ── Edit User ────────────────────────────────────────────────────────────────
+  const openEditModal = () => {
+    setEditForm({
+      firstName: user.raw.firstName || "",
+      lastName: user.raw.lastName || "",
+      email: user.raw.email || "",
+      phoneNumber: user.raw.phoneNumber || "",
+      gender: user.raw.gender || "",
+      jobTitle: user.raw.jobTitle || "",
+      employer: user.raw.employer || "",
+      monthlyIncome: user.raw.monthlyIncome || "",
+      employmentStatus: user.raw.employmentStatus || "",
+    });
+    setEditError("");
+    setEditModal(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setEditLoading(true);
+    setEditError("");
+    try {
+      const res = await apiService.put(
+        `/admin/users/${user.mongoId}`,
+        editForm,
+      );
+      if (res.data?.success) {
+        setEditModal(false);
+        setActionSuccess("User updated successfully.");
+        await reloadUser(user.mongoId);
+        setTimeout(() => setActionSuccess(""), 4000);
+      } else {
+        setEditError(res.data?.message || "Failed to update user.");
+      }
+    } catch (err) {
+      setEditError(err.response?.data?.message || "Failed to update user.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // ── Send Message ──────────────────────────────────────────────────────────────
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!messageForm.title.trim() || !messageForm.message.trim()) {
+      setMessageError("Title and message are required.");
+      return;
+    }
+    setMessageLoading(true);
+    setMessageError("");
+    try {
+      const res = await apiService.post("/admin/notifications", {
+        title: messageForm.title,
+        message: messageForm.message,
+        type: messageForm.type,
+        priority: "medium",
+        recipient: { userId: user.mongoId },
+      });
+      if (res.data?.success) {
+        setMessageModal(false);
+        setMessageForm({ title: "", message: "", type: "info" });
+        setActionSuccess("Message sent to user.");
+        setTimeout(() => setActionSuccess(""), 4000);
+      } else {
+        setMessageError(res.data?.message || "Failed to send message.");
+      }
+    } catch (err) {
+      setMessageError(err.response?.data?.message || "Failed to send message.");
+    } finally {
+      setMessageLoading(false);
+    }
+  };
+
+  // ── Suspend / Activate User ───────────────────────────────────────────────────
+  const handleSuspendToggle = async () => {
+    setSuspendLoading(true);
+    try {
+      const newStatus = !user.raw.isActive;
+      await apiService.updateUserStatus(user.mongoId, newStatus);
+      setSuspendModal(false);
+      setActionSuccess(
+        `User ${newStatus ? "activated" : "suspended"} successfully.`,
+      );
+      await reloadUser(user.mongoId);
+      setTimeout(() => setActionSuccess(""), 4000);
+    } catch (err) {
+      setActionSuccess("");
+      setError(err.response?.data?.message || "Failed to update user status.");
+    } finally {
+      setSuspendLoading(false);
+    }
+  };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
@@ -148,12 +270,12 @@ const FindUser = () => {
       }
 
       const foundUser = getBestMatch(users, searchQuery, searchType);
-      if (!foundUser?._id) {
+      if (!foundUser?.id) {
         setError("User not found");
         return;
       }
 
-      const detailResponse = await apiService.getUserById(foundUser._id);
+      const detailResponse = await apiService.getUserById(foundUser.id);
       const detailPayload = detailResponse?.data;
 
       if (!detailPayload?.user) {
@@ -512,27 +634,360 @@ const FindUser = () => {
             </section>
 
             {/* Actions */}
+            {actionSuccess && (
+              <div className="mb-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-700">
+                {actionSuccess}
+              </div>
+            )}
             <div className="flex flex-wrap gap-3 pt-2 border-t border-gray-100">
               {hasActionPermission("editUsers") && (
-                <button className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition">
+                <button
+                  onClick={openEditModal}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition"
+                >
                   Edit User
                 </button>
               )}
               {hasActionPermission("viewLoans") && (
-                <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition">
+                <button
+                  onClick={() => setLoanHistoryModal(true)}
+                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition"
+                >
                   View Loan History
                 </button>
               )}
               {hasActionPermission("manageNotifications") && (
-                <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition">
+                <button
+                  onClick={() => {
+                    setMessageForm({ title: "", message: "", type: "info" });
+                    setMessageError("");
+                    setMessageModal(true);
+                  }}
+                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition"
+                >
                   Send Message
                 </button>
               )}
               {hasActionPermission("editUsers") && (
-                <button className="px-4 py-2 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl hover:bg-red-100 transition">
-                  Suspend User
+                <button
+                  onClick={() => setSuspendModal(true)}
+                  className="px-4 py-2 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl hover:bg-red-100 transition"
+                >
+                  {user.raw.isActive ? "Suspend User" : "Activate User"}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit User Modal ── */}
+      {editModal && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="font-bold text-gray-800">
+                Edit User — {user.name}
+              </h3>
+              <button
+                onClick={() => setEditModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+            <form
+              onSubmit={handleEditSubmit}
+              className="p-6 space-y-3 max-h-[70vh] overflow-y-auto"
+            >
+              {editError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                  {editError}
+                </div>
+              )}
+              {[
+                { label: "First Name", key: "firstName" },
+                { label: "Last Name", key: "lastName" },
+                { label: "Email", key: "email", type: "email" },
+                { label: "Phone Number", key: "phoneNumber" },
+                { label: "Job Title", key: "jobTitle" },
+                { label: "Employer", key: "employer" },
+                {
+                  label: "Monthly Income",
+                  key: "monthlyIncome",
+                  type: "number",
+                },
+              ].map(({ label, key, type = "text" }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                    {label}
+                  </label>
+                  <input
+                    type={type}
+                    value={editForm[key] || ""}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, [key]: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Gender
+                </label>
+                <select
+                  value={editForm.gender || ""}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, gender: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Employment Status
+                </label>
+                <select
+                  value={editForm.employmentStatus || ""}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      employmentStatus: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select</option>
+                  <option value="employed">Employed</option>
+                  <option value="self-employed">Self-Employed</option>
+                  <option value="unemployed">Unemployed</option>
+                  <option value="student">Student</option>
+                  <option value="retired">Retired</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition"
+                >
+                  {editLoading ? "Saving…" : "Save Changes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditModal(false)}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Loan History Modal ── */}
+      {loanHistoryModal && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="font-bold text-gray-800">
+                Loan History — {user.name}
+              </h3>
+              <button
+                onClick={() => setLoanHistoryModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+            <div className="overflow-x-auto max-h-[60vh]">
+              {user.loans.length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-12">
+                  No loans found for this user.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                    <tr>
+                      {[
+                        "Loan ID",
+                        "Amount",
+                        "Status",
+                        "Applied",
+                        "Due / Completed",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-left font-semibold whitespace-nowrap"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {user.loans.map((loan) => (
+                      <tr key={loan.id} className="hover:bg-gray-50/60">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                          {loan.id?.slice(-10)}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-gray-800">
+                          {formatCurrency(loan.amount)}
+                        </td>
+                        <td className="px-4 py-3 capitalize text-gray-600">
+                          {loan.status}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          {formatDate(loan.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          {formatDate(loan.completionDate || loan.approvalDate)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setLoanHistoryModal(false)}
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Send Message Modal ── */}
+      {messageModal && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="font-bold text-gray-800">
+                Send Message to {user.name}
+              </h3>
+              <button
+                onClick={() => setMessageModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <FiX size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleSendMessage} className="p-6 space-y-4">
+              {messageError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                  {messageError}
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={messageForm.title}
+                  onChange={(e) =>
+                    setMessageForm((f) => ({ ...f, title: e.target.value }))
+                  }
+                  placeholder="Notification title"
+                  required
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Message
+                </label>
+                <textarea
+                  value={messageForm.message}
+                  onChange={(e) =>
+                    setMessageForm((f) => ({ ...f, message: e.target.value }))
+                  }
+                  placeholder="Enter message content…"
+                  rows={4}
+                  required
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                  Type
+                </label>
+                <select
+                  value={messageForm.type}
+                  onChange={(e) =>
+                    setMessageForm((f) => ({ ...f, type: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="info">Info</option>
+                  <option value="success">Success</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Alert</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={messageLoading}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition"
+                >
+                  <FiSend size={13} />{" "}
+                  {messageLoading ? "Sending…" : "Send Message"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMessageModal(false)}
+                  className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Suspend / Activate Confirm ── */}
+      {suspendModal && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-gray-800 mb-2">
+              {user.raw.isActive ? "Suspend User?" : "Activate User?"}
+            </h3>
+            <p className="text-sm text-gray-500 mb-6">
+              {user.raw.isActive
+                ? `This will prevent ${user.name} from accessing their account.`
+                : `This will restore ${user.name}'s access to their account.`}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSuspendToggle}
+                disabled={suspendLoading}
+                className={`flex-1 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 transition text-white ${user.raw.isActive ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}
+              >
+                {suspendLoading
+                  ? "Processing…"
+                  : user.raw.isActive
+                    ? "Yes, Suspend"
+                    : "Yes, Activate"}
+              </button>
+              <button
+                onClick={() => setSuspendModal(false)}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

@@ -36,9 +36,9 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Handle unauthorized access
+      // Handle unauthorized access — dispatch event instead of hard reload
       localStorage.removeItem("adminToken");
-      window.location.href = "/login";
+      window.dispatchEvent(new CustomEvent("admin:unauthorized"));
     }
     return Promise.reject(error);
   },
@@ -311,17 +311,34 @@ class ApiService {
   }
 
   // Loan Management APIs
-  async getLoans(page = 1, limit = 10, status = "", search = "") {
+  async getLoans(pageOrOpts = 1, limit = 10, status = "", search = "") {
     try {
-      const queryParams = { page, limit };
-      if (status && status !== "all") queryParams.status = status;
-      if (search) queryParams.search = search;
+      // Support both positional args (legacy) and an options object
+      let opts;
+      if (typeof pageOrOpts === "object" && pageOrOpts !== null) {
+        opts = pageOrOpts;
+      } else {
+        opts = { page: pageOrOpts, limit, status, search };
+      }
+      const {
+        page = 1,
+        limit: lim = 10,
+        status: st = "",
+        search: q = "",
+        sortBy,
+        sortOrder,
+      } = opts;
+
+      const queryParams = { page, limit: lim };
+      if (st && st !== "all") queryParams.status = st;
+      if (q) queryParams.search = q;
+      if (sortBy) queryParams.sortBy = sortBy;
+      if (sortOrder) queryParams.sortOrder = sortOrder;
 
       const response = await api.get("/admin/loans", {
         params: queryParams,
       });
 
-      // Return data in the expected format for CreditReviewList component
       return {
         loans: response.data?.data?.loans || [],
         pagination: response.data?.data?.pagination || { total: 0, pages: 0 },
@@ -344,13 +361,27 @@ class ApiService {
 
   async updateLoanStatus(loanId, status, notes = "") {
     try {
-      const response = await api.put(`/loans/admin/${loanId}/status`, {
+      const response = await api.patch(`/admin/loans/${loanId}/status`, {
         status,
         adminNotes: notes,
       });
       return response.data;
     } catch (error) {
       console.error("Error updating loan status:", error);
+      throw error;
+    }
+  }
+
+  async retryDisbursement(loanId, { channel, reference, notes }) {
+    try {
+      const response = await api.post(`/loans/${loanId}/disburse/retry`, {
+        channel,
+        reference,
+        notes,
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Error recording disbursement:", error);
       throw error;
     }
   }
@@ -475,6 +506,18 @@ class ApiService {
       return response.data;
     } catch (error) {
       console.error("Error fetching payment stats:", error);
+      throw error;
+    }
+  }
+
+  // Pre-collection repayments — GET /api/precollection/repayments
+  // Used by PreCollection > Payment Records page (blueprint Section 8)
+  async getPrecollectionRepayments(params = {}) {
+    try {
+      const response = await api.get("/precollection/repayments", { params });
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching precollection repayments:", error);
       throw error;
     }
   }
@@ -804,47 +847,18 @@ class ApiService {
   }
 
   async getCreditReviewOfficers() {
+    // Kept for backwards-compat; delegates to the new endpoint
+    return this.getOfficersByRole("review-officer,review-lead");
+  }
+
+  async getOfficersByRole(roles = "") {
     try {
-      const response = await api.get("/admin-management/admins", {
-        params: {
-          limit: 100, // Get all officers
-          status: "active",
-        },
+      const response = await api.get("/admin-management/officers", {
+        params: { role: roles, status: "active" },
       });
-
-      // Filter for credit review officers and format the response
-      const allAdmins =
-        response.data?.data?.admins || response.data?.admins || [];
-      const creditReviewOfficers = allAdmins.filter((admin) => {
-        const roleName = admin.role?.name || admin.roleName;
-        return (
-          roleName &&
-          (roleName.includes("review") ||
-            roleName.includes("credit") ||
-            roleName === "review-officer" ||
-            roleName === "credit-review-officer" ||
-            roleName === "review-lead")
-        );
-      });
-
-      // Format officers for the assignment modal
-      const formattedOfficers = creditReviewOfficers.map((officer) => ({
-        _id: officer._id || officer.id,
-        name:
-          officer.fullName ||
-          `${officer.firstName} ${officer.lastName}`.trim() ||
-          officer.username,
-        email: officer.email,
-        currentLoans: officer.assignments?.loanApplications?.length || 0,
-        role: officer.role,
-      }));
-
-      return {
-        success: true,
-        officers: formattedOfficers,
-      };
+      return response.data;
     } catch (error) {
-      console.error("Error fetching credit review officers:", error);
+      console.error("Error fetching officers by role:", error);
       throw error;
     }
   }

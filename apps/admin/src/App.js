@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
+  useNavigate,
 } from "react-router-dom";
 import {
   ThemeProvider,
@@ -34,6 +35,7 @@ import CollectionList from "./pages/Collection/CollectionList";
 import CollectionRank1 from "./pages/Collection/Rank1";
 import CollectionRank2 from "./pages/Collection/Rank2";
 import CollectionPaymentRecord from "./pages/Collection/PaymentRecord";
+import OfficerManagement from "./pages/Collection/OfficerManagement";
 import Configuration from "./pages/Configuration";
 import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import ContentManagement from "./pages/ContentManagement";
@@ -50,11 +52,27 @@ import ContactInfo from "./pages/ContactInfo";
 import FAQ from "./pages/FAQ";
 import TermsConditions from "./pages/TermsConditions";
 import LoanExtension from "./pages/LoanExtension";
+import LoanDetails from "./pages/LoanDetails";
 import OrderRepayment from "./pages/OrderRepayment";
 import OrderRepaymentReview from "./pages/OrderRepaymentReview";
+import OrderLending from "./pages/OrderLending";
+import OrderList from "./pages/OrderList";
+import CreditReviewAssign from "./pages/CreditReviewAssign";
+import CreditReviewCount from "./pages/CreditReviewCount";
 
 import "./App.css";
 import "react-toastify/dist/ReactToastify.css";
+
+// Listens for 401 events from api.js interceptor and navigates without a hard reload
+function UnauthorizedHandler() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const handler = () => navigate("/login", { replace: true });
+    window.addEventListener("admin:unauthorized", handler);
+    return () => window.removeEventListener("admin:unauthorized", handler);
+  }, [navigate]);
+  return null;
+}
 
 // Create a default theme
 const theme = createTheme({
@@ -76,6 +94,7 @@ function App() {
         <AuthProvider>
           <Router>
             <TabProvider>
+              <UnauthorizedHandler />
               <div className="App">
                 <Routes>
                   <Route path="/login" element={<Login />} />
@@ -124,21 +143,10 @@ function App() {
                                 </div>
                               }
                             />
-                            <Route
-                              path="/order/list"
-                              element={
-                                <div className="page-placeholder">
-                                  Order List - Coming Soon
-                                </div>
-                              }
-                            />
+                            <Route path="/order/list" element={<OrderList />} />
                             <Route
                               path="/order/lending"
-                              element={
-                                <div className="page-placeholder">
-                                  Order Lending - Coming Soon
-                                </div>
-                              }
+                              element={<OrderLending />}
                             />
                             <Route
                               path="/order/payment-failed"
@@ -150,11 +158,7 @@ function App() {
                             />
                             <Route
                               path="/order/loan-details"
-                              element={
-                                <div className="page-placeholder">
-                                  Loan Details - Coming Soon
-                                </div>
-                              }
+                              element={<LoanDetails />}
                             />
                             <Route
                               path="/order/repayment-plan"
@@ -311,11 +315,7 @@ function App() {
                             />
                             <Route
                               path="/credit-review/assign"
-                              element={
-                                <div className="page-placeholder">
-                                  Credit Review Assignment - Coming Soon
-                                </div>
-                              }
+                              element={<CreditReviewAssign />}
                             />
                             <Route
                               path="/credit-review/list"
@@ -323,11 +323,7 @@ function App() {
                             />
                             <Route
                               path="/credit-review/count"
-                              element={
-                                <div className="page-placeholder">
-                                  Credit Review Statistics - Coming Soon
-                                </div>
-                              }
+                              element={<CreditReviewCount />}
                             />
 
                             {/* Pre-collection Routes */}
@@ -504,6 +500,10 @@ function App() {
                             <Route
                               path="/collection/payment-record"
                               element={<CollectionPaymentRecord />}
+                            />
+                            <Route
+                              path="/collection/officers"
+                              element={<OfficerManagement />}
                             />
 
                             {/* Other Routes */}

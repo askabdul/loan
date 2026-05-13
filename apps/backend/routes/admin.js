@@ -295,11 +295,61 @@ router.get(
   }),
 );
 
+// PUT /api/admin/users/:id — edit basic user info
+router.put(
+  "/users/:id",
+  requireMenuAccess("userManagement"),
+  requireActionPermission("editUsers"),
+  [
+    body("firstName").optional().isString().trim().notEmpty(),
+    body("lastName").optional().isString().trim().notEmpty(),
+    body("email").optional().isEmail().normalizeEmail(),
+    body("phoneNumber").optional().isString().trim(),
+    body("gender").optional().isIn(["male", "female", "other"]),
+    body("dateOfBirth").optional().isISO8601(),
+    body("jobTitle").optional().isString(),
+    body("employer").optional().isString(),
+    body("monthlyIncome").optional().isNumeric(),
+    body("employmentStatus").optional().isString(),
+  ],
+  catchAsync(async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return next(new AppError("Validation errors", 400, errors.array()));
+
+    const user = await User.findByPk(req.params.id);
+    if (!user) return next(new AppError("User not found", 404));
+
+    const allowed = [
+      "firstName",
+      "lastName",
+      "email",
+      "phoneNumber",
+      "gender",
+      "dateOfBirth",
+      "jobTitle",
+      "employer",
+      "monthlyIncome",
+      "employmentStatus",
+    ];
+    const updates = {};
+    allowed.forEach((field) => {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    });
+
+    await user.update(updates);
+    res.json({
+      success: true,
+      message: "User updated successfully",
+      data: { user },
+    });
+  }),
+);
+
 // PATCH /api/admin/users/:id/status
 router.patch(
   "/users/:id/status",
   requireMenuAccess("userManagement"),
-  requireActionPermission("updateUserStatus"),
   [body("isActive").isBoolean(), body("reason").optional().isString()],
   catchAsync(async (req, res, next) => {
     const errors = validationResult(req);
@@ -618,7 +668,7 @@ router.patch(
 router.post(
   "/loans/assign",
   requireMenuAccess("creditReview"),
-  requireActionPermission("assignLoans"),
+  requireActionPermission("assignLoan"),
   [
     body("loanIds").isArray(),
     body("officerIds").isArray(),
@@ -695,7 +745,7 @@ router.post(
 // GET /api/admin/config
 router.get(
   "/config",
-  requireMenuAccess("systemSettings"),
+  requireMenuAccess("systemConfig"),
   requireDataAccess("configurations"),
   catchAsync(async (req, res, next) => {
     const configs = await AppConfig.findAll();
@@ -710,7 +760,7 @@ router.get(
 // PUT /api/admin/config/:key
 router.put(
   "/config/:key",
-  requireMenuAccess("systemSettings"),
+  requireMenuAccess("systemConfig"),
   requireActionPermission("updateConfiguration"),
   [body("value").exists()],
   catchAsync(async (req, res, next) => {
@@ -739,7 +789,7 @@ router.put(
 // PUT /api/admin/config
 router.put(
   "/config",
-  requireMenuAccess("systemSettings"),
+  requireMenuAccess("systemConfig"),
   requireActionPermission("updateConfiguration"),
   catchAsync(async (req, res, next) => {
     const configs = req.body;
@@ -963,6 +1013,42 @@ router.get(
 );
 
 // ===== PAYMENT MANAGEMENT =====
+
+// GET /api/admin/payments/stats — summary totals for Fund Management dashboard
+// IMPORTANT: must be defined BEFORE /payments to prevent Express matching "stats" as :id
+router.get(
+  "/payments/stats",
+  requireMenuAccess("fundManagement"),
+  catchAsync(async (req, res) => {
+    const rows = await Payment.findAll({
+      attributes: [
+        "status",
+        [fn("COUNT", col("id")), "count"],
+        [fn("SUM", col("amount")), "total"],
+      ],
+      group: ["status"],
+      raw: true,
+    });
+    const summary = {
+      totalPayments: 0,
+      totalAmount: 0,
+      successfulPayments: 0,
+      failedPayments: 0,
+      pendingPayments: 0,
+    };
+    rows.forEach((r) => {
+      summary.totalPayments += parseInt(r.count);
+      summary.totalAmount += parseFloat(r.total || 0);
+      if (["completed", "successful"].includes(r.status))
+        summary.successfulPayments += parseInt(r.count);
+      else if (r.status === "failed")
+        summary.failedPayments += parseInt(r.count);
+      else if (r.status === "pending")
+        summary.pendingPayments += parseInt(r.count);
+    });
+    res.json({ success: true, stats: summary });
+  }),
+);
 
 router.get(
   "/payments",

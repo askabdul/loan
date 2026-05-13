@@ -14,8 +14,6 @@ import VerifyOTP from "./pages/Register/VerifyOTP";
 import PersonalInfo from "./pages/Register/PersonalInfo";
 import SetPin from "./pages/Register/SetPin";
 import ForgotPin from "./pages/ForgotPin";
-
-// KYC Gate pages (shown at loan application time, NOT registration)
 import KycGate from "./pages/LoanApplication/KycGate";
 
 // Import main app pages

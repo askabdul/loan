@@ -6,6 +6,7 @@ const { Op } = require("sequelize");
 const { body, validationResult } = require("express-validator");
 const { Admin, Role } = require("../models");
 const { adminAuth, requirePermission } = require("../middleware/auth");
+const { requireActionPermission } = require("../middleware/roleAuth");
 
 const router = express.Router();
 
@@ -121,7 +122,7 @@ router.post(
   "/register",
   [
     adminAuth,
-    requirePermission("admin.write"),
+    requireActionPermission("createAdmin"),
     upload.single("profileImage"),
     body("email").isEmail().normalizeEmail(),
     body("username")

@@ -29,7 +29,12 @@ const handleResponse = async (response) => {
   const data = await response.json();
 
   if (!response.ok) {
-    const err = new Error(data.message || "An error occurred");
+    // Backend wraps errors as { error: { message } } or { message } — handle both
+    const message =
+      data.message ||
+      data.error?.message ||
+      `Request failed (${response.status})`;
+    const err = new Error(message);
     err.status = response.status;
     err.data = data;
     throw err;
@@ -266,6 +271,17 @@ export const loansAPI = {
   requestDisbursement: async (loanId) => {
     const response = await fetch(
       `${API_BASE_URL}/loans/${loanId}/request-disbursement`,
+      {
+        method: "POST",
+        headers: createHeaders(),
+      },
+    );
+    return handleResponse(response);
+  },
+
+  confirmReceipt: async (loanId) => {
+    const response = await fetch(
+      `${API_BASE_URL}/loans/${loanId}/confirm-receipt`,
       {
         method: "POST",
         headers: createHeaders(),

@@ -1,238 +1,325 @@
-import React, { useState, useEffect } from 'react';
-import { FiPhone, FiUser, FiCalendar, FiDollarSign, FiSearch, FiRefreshCw, FiLayers } from 'react-icons/fi';
-import { useAuth } from '../../contexts/AuthContext';
+/**
+ * PreCollectionAllList.js — Blueprint Section 8
+ * Shows all active loans approaching or past due date.
+ * Accessible by: super-admin, admin, local-manager, precollection-lead, precollection-officer
+ * Data source: GET /api/precollection/cases
+ */
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  FiSearch,
+  FiRefreshCw,
+  FiLayers,
+  FiDollarSign,
+  FiCalendar,
+  FiUser,
+  FiPhone,
+} from "react-icons/fi";
+import { toast } from "react-toastify";
+
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const authHeader = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+});
+
+const fmt = (n) =>
+  new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(
+    n || 0,
+  );
+
+const daysLabel = (dueDate) => {
+  if (!dueDate) return { text: "—", cls: "bg-gray-100 text-gray-500" };
+  const diff = Math.ceil((new Date(dueDate) - Date.now()) / 86400000);
+  if (diff < 0)
+    return {
+      text: `${Math.abs(diff)}d overdue`,
+      cls: "bg-red-100 text-red-700",
+    };
+  if (diff === 0)
+    return { text: "Due today", cls: "bg-orange-100 text-orange-700" };
+  if (diff <= 3)
+    return { text: `${diff}d left`, cls: "bg-amber-100 text-amber-700" };
+  return { text: `${diff}d left`, cls: "bg-emerald-100 text-emerald-700" };
+};
+
+const PRECOLL_STATUS_BADGE = {
+  "pending-assignment": "bg-amber-50 text-amber-700 border-amber-200",
+  assigned: "bg-blue-50 text-blue-700 border-blue-200",
+  processed: "bg-purple-50 text-purple-700 border-purple-200",
+  "hung-up": "bg-red-50 text-red-700 border-red-200",
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+const LOAN_STATUS_BADGE = {
+  active: "bg-blue-50 text-blue-700 border-blue-200",
+  overdue: "bg-red-50 text-red-700 border-red-200",
+  approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  completed: "bg-gray-100 text-gray-500 border-gray-200",
+};
+
+const PRECOLL_STATUSES = [
+  { value: "", label: "All Statuses" },
+  { value: "pending-assignment", label: "Pending Assignment" },
+  { value: "assigned", label: "Assigned" },
+  { value: "processed", label: "Processed" },
+  { value: "hung-up", label: "Hung Up" },
+];
 
 const PreCollectionAllList = () => {
-  const { user } = useAuth();
   const [loans, setLoans] = useState([]);
-  const [filteredLoans, setFilteredLoans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  // Search and filter states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
-  const [amountFilter, setAmountFilter] = useState('');
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const LIMIT = 20;
 
-  // Fetch all approved loans (God Mode for super-admin)
-  const fetchAllApprovedLoans = async () => {
+  const fetchLoans = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      setError('');
-      
-      const token = localStorage.getItem('adminToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      const response = await fetch('/api/admin/loans?status=approved', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const params = new URLSearchParams({
+        page,
+        limit: LIMIT,
+        ...(statusFilter ? { status: statusFilter } : {}),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success && data.data && Array.isArray(data.data.loans)) {
-        setLoans(data.data.loans);
+      const res = await fetch(`${API_BASE}/precollection/cases?${params}`, {
+        headers: authHeader(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        let list = data.loans || [];
+        // Client-side search filter on name / phone / loanId
+        if (search.trim()) {
+          const q = search.toLowerCase();
+          list = list.filter(
+            (l) =>
+              l.User?.firstName?.toLowerCase().includes(q) ||
+              l.User?.lastName?.toLowerCase().includes(q) ||
+              l.User?.phoneNumber?.includes(q) ||
+              l.loanId?.toLowerCase().includes(q),
+          );
+        }
+        setLoans(list);
+        setTotal(data.total || 0);
       } else {
-        throw new Error('Invalid response format');
+        toast.error(data.message || "Failed to load pre-collection cases");
       }
-    } catch (error) {
-      console.error('Error fetching approved loans:', error);
-      setError(`Failed to load approved loans: ${error.message}`);
+    } catch {
+      toast.error("Network error — could not load cases");
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, statusFilter, search]);
 
   useEffect(() => {
-    // Only super-admin can access this page
-    if (user?.role?.name === 'super-admin') {
-      fetchAllApprovedLoans();
-    } else {
-      setError('Access denied. This page is only available to super-admin users.');
-      setLoading(false);
-    }
-  }, [user]);
+    fetchLoans();
+  }, [fetchLoans]);
 
-  // Filter loans based on search and filter criteria
+  // Debounce search
   useEffect(() => {
-    let filtered = loans;
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(loan => 
-        loan.user?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.user?.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.loanId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.user?.phoneNumber?.includes(searchTerm)
-      );
-    }
-
-    // Status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(loan => loan.status === statusFilter);
-    }
-
-    // Amount filter
-    if (amountFilter) {
-      const amount = parseFloat(amountFilter);
-      if (!isNaN(amount)) {
-        filtered = filtered.filter(loan => loan.amount >= amount);
-      }
-    }
-
-    // Date filter
-    if (dateFilter !== 'all') {
-      const now = new Date();
-      filtered = filtered.filter(loan => {
-        const dueDate = new Date(loan.dueDate);
-        const daysDiff = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
-        
-        switch (dateFilter) {
-          case 'due-soon':
-            return daysDiff <= 3 && daysDiff >= -2;
-          case 'overdue':
-            return daysDiff < 0;
-          case 'future':
-            return daysDiff > 3;
-          default:
-            return true;
-        }
-      });
-    }
-
-    setFilteredLoans(filtered);
-  }, [loans, searchTerm, statusFilter, dateFilter, amountFilter]);
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-GH', {
-      style: 'currency',
-      currency: 'GHS'
-    }).format(amount);
-  };
-
-  const getDaysToDue = (dueDate) => {
-    const now = new Date();
-    const due = new Date(dueDate);
-    const diffTime = due - now;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'active': return 'primary';
-      case 'overdue': return 'error';
-      case 'completed': return 'default';
-      default: return 'default';
-    }
-  };
-
-  const getDueDateColor = (daysToDue) => {
-    if (daysToDue < 0) return 'error';
-    if (daysToDue <= 2) return 'warning';
-    return 'default';
-  };
-
-  const STATUS_BADGE = { approved:'bg-emerald-50 text-emerald-700 border-emerald-200', active:'bg-blue-50 text-blue-700 border-blue-200', overdue:'bg-red-50 text-red-700 border-red-200', completed:'bg-gray-100 text-gray-500 border-gray-200' };
-  const inp = "px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
-
-  if (loading) {
-    return (
-      <div className="p-6 bg-gray-50 min-h-screen w-full flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-gray-400"><FiRefreshCw size={16} className="animate-spin" /> Loading loans...</div>
-      </div>
-    );
-  }
+    const t = setTimeout(() => {
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen w-full">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center"><FiLayers size={18} className="text-blue-600" /></div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 m-0 leading-none">All Approved Loans (God Mode)</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Super-admin view of all approved loans</p>
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
+            <FiLayers size={18} className="text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 m-0 leading-none">
+              Pre-Collection Cases
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Active loans being monitored before/after due date · {total} total
+            </p>
+          </div>
         </div>
+        <button
+          onClick={() => fetchLoans()}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition"
+        >
+          <FiRefreshCw size={13} className={loading ? "animate-spin" : ""} />{" "}
+          Refresh
+        </button>
       </div>
-
-      {error && <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 mb-5 text-sm text-red-700">{error}</div>}
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[240px]">
-            <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search by name, email, loan ID, or phone..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-          </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inp}>
-            <option value="all">All Status</option>
-            <option value="approved">Approved</option>
-            <option value="active">Active</option>
-            <option value="overdue">Overdue</option>
-            <option value="completed">Completed</option>
-          </select>
-          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className={inp}>
-            <option value="all">All Dates</option>
-            <option value="due-soon">Due Soon (≤3 days)</option>
-            <option value="overdue">Overdue</option>
-            <option value="future">Future (&gt;3 days)</option>
-          </select>
-          <div className="relative">
-            <FiDollarSign size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="number" placeholder="Min Amount" value={amountFilter} onChange={(e) => setAmountFilter(e.target.value)}
-              className="pl-8 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-36" />
-          </div>
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="relative flex-1 min-w-[220px]">
+          <FiSearch
+            size={13}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          />
+          <input
+            type="text"
+            placeholder="Search name, phone, loan ID…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          />
         </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+        >
+          {PRECOLL_STATUSES.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <p className="text-xs text-gray-400 mb-3">Showing {filteredLoans.length} of {loans.length} approved loans</p>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto mb-5 w-full">
-        <table style={{ minWidth: '760px' }} className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              {['Loan ID','Client Name','Phone','Amount','Due Date','Days to Due','Status','Pre-collection Status'].map(h => (
-                <th key={h} className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 text-left whitespace-nowrap">{h}</th>
+      {/* Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+        <table
+          className="w-full text-sm border-collapse"
+          style={{ minWidth: 800 }}
+        >
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-100">
+              {[
+                "Loan ID",
+                "Customer",
+                "Phone",
+                "Outstanding",
+                "Due Date",
+                "Status",
+                "Pre-Coll Status",
+                "Officer",
+              ].map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-left whitespace-nowrap"
+                >
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {filteredLoans.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">No approved loans found matching your criteria.</td></tr>
-            ) : filteredLoans.map(loan => {
-              const days = getDaysToDue(loan.dueDate);
-              const daysCls = days < 0 ? 'bg-red-50 text-red-700 border-red-200' : days <= 2 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-100 text-gray-500 border-gray-200';
-              return (
-                <tr key={loan._id} className="hover:bg-gray-50/60">
-                  <td className="px-4 py-3 text-xs font-mono text-gray-600">{loan.loanId}</td>
-                  <td className="px-4 py-3 text-xs font-semibold text-gray-700"><span className="flex items-center gap-1"><FiUser size={11} />{loan.user?.firstName} {loan.user?.lastName}</span></td>
-                  <td className="px-4 py-3 text-xs text-gray-500"><span className="flex items-center gap-1"><FiPhone size={11} />{loan.user?.phoneNumber}</span></td>
-                  <td className="px-4 py-3 text-xs font-semibold text-gray-700">{formatCurrency(loan.amount)}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500"><span className="flex items-center gap-1"><FiCalendar size={11} />{new Date(loan.dueDate).toLocaleDateString()}</span></td>
-                  <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${daysCls}`}>{days} days</span></td>
-                  <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_BADGE[loan.status]||'bg-gray-100 text-gray-500 border-gray-200'}`}>{loan.status}</span></td>
-                  <td className="px-4 py-3"><span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-gray-100 text-gray-500 border-gray-200">{loan.precollectionStatus||'pending-assignment'}</span></td>
-                </tr>
-              );
-            })}
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-16 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+                    <p className="text-sm text-gray-400">Loading cases…</p>
+                  </div>
+                </td>
+              </tr>
+            ) : loans.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={8}
+                  className="px-4 py-16 text-center text-sm text-gray-400"
+                >
+                  No pre-collection cases found.
+                </td>
+              </tr>
+            ) : (
+              loans.map((loan) => {
+                const { text: dText, cls: dCls } = daysLabel(
+                  loan.extendedDueDate || loan.dueDate,
+                );
+                return (
+                  <tr
+                    key={loan.id}
+                    className="hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                      {loan.loanId?.slice(-10) || loan.id?.slice(-8)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-800 text-sm">
+                        {loan.User?.firstName} {loan.User?.lastName}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {loan.User?.phoneNumber || "—"}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-800">
+                      {fmt(loan.remainingBalance)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs text-gray-500">
+                          {loan.extendedDueDate
+                            ? new Date(
+                                loan.extendedDueDate,
+                              ).toLocaleDateString()
+                            : loan.dueDate
+                              ? new Date(loan.dueDate).toLocaleDateString()
+                              : "—"}
+                        </span>
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${dCls}`}
+                        >
+                          {dText}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${LOAN_STATUS_BADGE[loan.status] || "bg-gray-100 text-gray-500 border-gray-200"}`}
+                      >
+                        {loan.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${PRECOLL_STATUS_BADGE[loan.precollectionStatus] || "bg-gray-100 text-gray-500 border-gray-200"}`}
+                      >
+                        {loan.precollectionStatus || "unassigned"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {loan.PrecollectionOfficer ? (
+                        `${loan.PrecollectionOfficer.firstName} ${loan.PrecollectionOfficer.lastName}`
+                      ) : (
+                        <span className="text-gray-300 italic">Unassigned</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {total > LIMIT && (
+        <div className="flex items-center justify-center gap-4 mt-4">
+          <button
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 1 || loading}
+            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+          >
+            ← Prev
+          </button>
+          <span className="text-sm text-gray-500">
+            Page {page} · {total} total
+          </span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={loans.length < LIMIT || loading}
+            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   );
-
 };
 
 export default PreCollectionAllList;

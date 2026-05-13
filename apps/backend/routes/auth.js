@@ -203,34 +203,28 @@ router.post(
       const dob = new Date(dateOfBirth);
       const age = (Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
       if (age < 18) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "You must be at least 18 years old to register.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "You must be at least 18 years old to register.",
+        });
       }
 
       // Duplicate phone check
       const existing = await User.findOne({ where: { phoneNumber } });
       if (existing) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "An account with this phone number already exists.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "An account with this phone number already exists.",
+        });
       }
 
       if (email) {
         const existingEmail = await User.findOne({ where: { email } });
         if (existingEmail) {
-          return res
-            .status(400)
-            .json({
-              success: false,
-              message: "An account with this email already exists.",
-            });
+          return res.status(400).json({
+            success: false,
+            message: "An account with this email already exists.",
+          });
         }
       }
 
@@ -260,6 +254,54 @@ router.post(
       sendTokenResponse(user, 201, res);
     } catch (error) {
       console.error("Register complete error:", error);
+      res
+        .status(500)
+        .json({ success: false, message: "Server error during registration." });
+    }
+  },
+);
+
+// ── POST /register/minimal ────────────────────────────────────────────────────
+// New lightweight registration: phone + PIN only.
+// Personal info is collected later at the KYC Gate when applying for a loan.
+router.post(
+  "/register/minimal",
+  [
+    validPhone,
+    body("pin")
+      .isLength({ min: 4, max: 4 })
+      .isNumeric()
+      .withMessage("PIN must be exactly 4 digits"),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty())
+        return res.status(400).json({ success: false, errors: errors.array() });
+
+      const { phoneNumber, pin } = req.body;
+
+      const existing = await User.findOne({ where: { phoneNumber } });
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: "An account with this phone number already exists.",
+        });
+      }
+
+      const user = await User.create({
+        phoneNumber,
+        pin,
+        authMethod: "phone-pin",
+        isPhoneVerified: true,
+        registrationComplete: false,
+        kycComplete: false,
+        mustChangePinOnLogin: false,
+      });
+
+      sendTokenResponse(user, 201, res);
+    } catch (error) {
+      console.error("Register minimal error:", error);
       res
         .status(500)
         .json({ success: false, message: "Server error during registration." });

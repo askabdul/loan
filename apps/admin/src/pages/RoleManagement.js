@@ -104,7 +104,10 @@ const Modal = ({ onClose, children, wide = false }) =>
     <div
       style={{
         position: "fixed",
-        inset: 0,
+        top: 0,
+        left: 250,
+        right: 0,
+        bottom: 0,
         zIndex: 1200,
         backgroundColor: "rgba(15,23,42,0.5)",
         display: "flex",
@@ -193,13 +196,7 @@ const defaultForm = {
 
 // ── Main component ────────────────────────────────────────────────────────────
 const RoleManagement = () => {
-  const {
-    hasActionPermission,
-    hasButtonAccess,
-    hasTableAccess,
-    hasModalAccess,
-    hasFormAccess,
-  } = useAuth();
+  const { hasActionPermission, isSuperAdmin } = useAuth();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -457,8 +454,7 @@ const RoleManagement = () => {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
-        {(hasActionPermission("manageRoles") ||
-          hasButtonAccess("createRole")) && (
+        {(hasActionPermission("manageRoles") || isSuperAdmin()) && (
           <button
             onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition"
@@ -482,7 +478,7 @@ const RoleManagement = () => {
       )}
 
       {/* Table */}
-      {hasTableAccess("rolesTable") && (
+      {(hasActionPermission("manageRoles") || isSuperAdmin()) && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto mb-5 w-full">
           <table
             className="w-full text-sm border-collapse"
@@ -592,7 +588,7 @@ const RoleManagement = () => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          {hasButtonAccess("viewRole") && (
+                          {true && (
                             <button
                               onClick={() => openDetail(role)}
                               title="View Details"
@@ -602,7 +598,7 @@ const RoleManagement = () => {
                             </button>
                           )}
                           {(hasActionPermission("manageRoles") ||
-                            hasButtonAccess("editRole")) && (
+                            isSuperAdmin()) && (
                             <button
                               onClick={() => openEdit(role)}
                               title="Edit Role"
@@ -612,7 +608,7 @@ const RoleManagement = () => {
                             </button>
                           )}
                           {(hasActionPermission("manageRoles") ||
-                            hasButtonAccess("deleteRole")) && (
+                            isSuperAdmin()) && (
                             <button
                               onClick={() => handleDelete(role.id)}
                               title="Delete Role"
@@ -776,7 +772,7 @@ const RoleManagement = () => {
       )}
 
       {/* Detail Modal */}
-      {showDetailModal && selectedRole && hasModalAccess("roleDetailModal") && (
+      {showDetailModal && selectedRole && (
         <Modal onClose={closeModals} wide>
           <ModalHeader
             title={selectedRole.displayName}
@@ -840,8 +836,7 @@ const RoleManagement = () => {
             })}
           </div>
           <div className="flex justify-end px-6 py-4 border-t border-gray-100 flex-shrink-0 gap-3">
-            {(hasActionPermission("manageRoles") ||
-              hasButtonAccess("editRole")) && (
+            {(hasActionPermission("manageRoles") || isSuperAdmin()) && (
               <button
                 onClick={() => {
                   closeModals();
@@ -863,165 +858,169 @@ const RoleManagement = () => {
       )}
 
       {/* Create / Edit Modal */}
-      {showFormModal && hasModalAccess("roleFormModal") && (
-        <Modal onClose={closeModals} wide>
-          <ModalHeader
-            title={
-              isEditing
-                ? `Edit Role — ${selectedRole?.displayName}`
-                : "Create New Role"
-            }
-            onClose={closeModals}
-          />
-          {hasFormAccess("roleForm") && (
-            <form onSubmit={handleFormSubmit} className="flex flex-col min-h-0">
-              <div className="overflow-y-auto p-6 space-y-5 flex-1">
-                {formError && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
-                    {formError}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                      System Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData((p) => ({ ...p, name: e.target.value }))
-                      }
-                      required
-                      placeholder="e.g., review-officer"
-                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      Lowercase, hyphens only
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Display Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.displayName}
-                      onChange={(e) =>
-                        setFormData((p) => ({
-                          ...p,
-                          displayName: e.target.value,
-                        }))
-                      }
-                      required
-                      placeholder="e.g., Review Officer"
-                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Hierarchy Level <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.hierarchy}
-                      onChange={(e) =>
-                        setFormData((p) => ({
-                          ...p,
-                          hierarchy: parseInt(e.target.value) || 1,
-                        }))
-                      }
-                      required
-                      min={1}
-                      max={10}
-                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      1 = highest authority
-                    </p>
-                  </div>
-                  <div className="flex items-center mt-5">
-                    <label className="flex items-center gap-3 cursor-pointer">
+      {showFormModal &&
+        (hasActionPermission("manageRoles") || isSuperAdmin()) && (
+          <Modal onClose={closeModals} wide>
+            <ModalHeader
+              title={
+                isEditing
+                  ? `Edit Role — ${selectedRole?.displayName}`
+                  : "Create New Role"
+              }
+              onClose={closeModals}
+            />
+            {
+              <form
+                onSubmit={handleFormSubmit}
+                className="flex flex-col min-h-0"
+              >
+                <div className="overflow-y-auto p-6 space-y-5 flex-1">
+                  {formError && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+                      {formError}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                        System Name <span className="text-red-500">*</span>
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={formData.isActive}
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) =>
+                          setFormData((p) => ({ ...p, name: e.target.value }))
+                        }
+                        required
+                        placeholder="e.g., review-officer"
+                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Lowercase, hyphens only
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                        Display Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.displayName}
                         onChange={(e) =>
                           setFormData((p) => ({
                             ...p,
-                            isActive: e.target.checked,
+                            displayName: e.target.value,
                           }))
                         }
-                        className="accent-blue-600 w-4 h-4"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        Active Role
-                      </span>
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData((p) => ({
-                        ...p,
-                        description: e.target.value,
-                      }))
-                    }
-                    rows={2}
-                    placeholder="Describe this role's responsibilities…"
-                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white resize-none"
-                  />
-                </div>
-                {[
-                  { key: "menus", label: "Menu Access" },
-                  { key: "dataAccess", label: "Data Access" },
-                  { key: "actions", label: "Actions" },
-                ].map(({ key, label }) => {
-                  const entries = Object.entries(
-                    formData.permissions[key] || {},
-                  );
-                  return (
-                    <div key={key}>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-                        {label}
-                      </p>
-                      <PermCheckboxGroup
-                        entries={entries}
-                        onChange={(k, v) => handlePermChange(key, k, v)}
+                        required
+                        placeholder="e.g., Review Officer"
+                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       />
                     </div>
-                  );
-                })}
-              </div>
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={closeModals}
-                  disabled={formSubmitting}
-                  className="px-5 py-2.5 text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="px-5 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition disabled:opacity-60"
-                >
-                  {formSubmitting
-                    ? "Saving…"
-                    : isEditing
-                      ? "Save Changes"
-                      : "Create Role"}
-                </button>
-              </div>
-            </form>
-          )}
-        </Modal>
-      )}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                        Hierarchy Level <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.hierarchy}
+                        onChange={(e) =>
+                          setFormData((p) => ({
+                            ...p,
+                            hierarchy: parseInt(e.target.value) || 1,
+                          }))
+                        }
+                        required
+                        min={1}
+                        max={10}
+                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        1 = highest authority
+                      </p>
+                    </div>
+                    <div className="flex items-center mt-5">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.isActive}
+                          onChange={(e) =>
+                            setFormData((p) => ({
+                              ...p,
+                              isActive: e.target.checked,
+                            }))
+                          }
+                          className="accent-blue-600 w-4 h-4"
+                        />
+                        <span className="text-sm font-medium text-gray-700">
+                          Active Role
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                      Description
+                    </label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData((p) => ({
+                          ...p,
+                          description: e.target.value,
+                        }))
+                      }
+                      rows={2}
+                      placeholder="Describe this role's responsibilities…"
+                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white resize-none"
+                    />
+                  </div>
+                  {[
+                    { key: "menus", label: "Menu Access" },
+                    { key: "dataAccess", label: "Data Access" },
+                    { key: "actions", label: "Actions" },
+                  ].map(({ key, label }) => {
+                    const entries = Object.entries(
+                      formData.permissions[key] || {},
+                    );
+                    return (
+                      <div key={key}>
+                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
+                          {label}
+                        </p>
+                        <PermCheckboxGroup
+                          entries={entries}
+                          onChange={(k, v) => handlePermChange(key, k, v)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={closeModals}
+                    disabled={formSubmitting}
+                    className="px-5 py-2.5 text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formSubmitting}
+                    className="px-5 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition disabled:opacity-60"
+                  >
+                    {formSubmitting
+                      ? "Saving…"
+                      : isEditing
+                        ? "Save Changes"
+                        : "Create Role"}
+                  </button>
+                </div>
+              </form>
+            }
+          </Modal>
+        )}
     </div>
   );
 };

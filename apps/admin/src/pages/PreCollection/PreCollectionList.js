@@ -1,532 +1,354 @@
-import React, { useState, useEffect } from "react";
-import ReactDOM from "react-dom";
+/**
+ * PreCollection > List — Blueprint Section 8
+ * Active loan cases approaching due date — assign/manage precollection officers
+ * Uses GET /api/precollection/cases (status: pending-assignment | assigned | hung-up)
+ */
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  FiPhone,
-  FiUser,
-  FiCalendar,
-  FiDollarSign,
   FiSearch,
-  FiX,
-  FiClock,
   FiRefreshCw,
-  FiLayers,
+  FiUsers,
+  FiX,
+  FiChevronDown,
 } from "react-icons/fi";
-import { useAuth } from "../../contexts/AuthContext";
-import RemarkDialog from "../../components/RemarkDialog";
+import { toast } from "react-toastify";
+
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const authHeader = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
+});
+
+const TABS = [
+  {
+    key: "pending-assignment",
+    label: "Pending Assignment",
+    color: "text-amber-600 bg-amber-50 border-amber-200",
+  },
+  {
+    key: "assigned",
+    label: "Assigned",
+    color: "text-blue-600 bg-blue-50 border-blue-200",
+  },
+  {
+    key: "hung-up",
+    label: "Hung Up",
+    color: "text-red-600 bg-red-50 border-red-200",
+  },
+];
+
+const fmt = (n) =>
+  new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(
+    n || 0,
+  );
+
+const daysToDue = (dueDate) => {
+  if (!dueDate) return null;
+  return Math.ceil((new Date(dueDate) - Date.now()) / 86400000);
+};
+
+function DueBadge({ dueDate }) {
+  const days = daysToDue(dueDate);
+  if (days === null) return <span className="text-gray-400 text-xs">—</span>;
+  const cls =
+    days < 0
+      ? "bg-red-100 text-red-700"
+      : days === 0
+        ? "bg-orange-100 text-orange-700"
+        : days <= 3
+          ? "bg-amber-100 text-amber-700"
+          : "bg-emerald-100 text-emerald-700";
+  const label =
+    days < 0
+      ? `${Math.abs(days)}d overdue`
+      : days === 0
+        ? "Due today"
+        : `${days}d left`;
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function OfficerSelect({ officers, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const sel = officers.find((o) => o.id === value);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-between w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <span className={sel ? "text-gray-800" : "text-gray-400"}>
+          {sel ? `${sel.firstName} ${sel.lastName}` : "Select officer"}
+        </span>
+        <FiChevronDown size={14} className="text-gray-400" />
+      </button>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {officers.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-gray-400">
+              No officers available
+            </p>
+          ) : (
+            officers.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => {
+                  onChange(o.id);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition ${value === o.id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700"}`}
+              >
+                {o.firstName} {o.lastName}
+                <span className="ml-2 text-xs text-gray-400">
+                  {o.Role?.displayName || o.Role?.name || ""}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed top-0 right-0 bottom-0 left-[250px] z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-800">{title}</h3>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 const PreCollectionList = () => {
-  const { user, isSuperAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState("pending-assignment");
   const [loans, setLoans] = useState([]);
-  const [filteredLoans, setFilteredLoans] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [selectedLoan, setSelectedLoan] = useState(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [actionType, setActionType] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const [callOutcome, setCallOutcome] = useState("");
-  const [nextFollowUp, setNextFollowUp] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [assignOfficer, setAssignOfficer] = useState("");
   const [officers, setOfficers] = useState([]);
-
-  // Remark dialog states
-  const [remarkDialogOpen, setRemarkDialogOpen] = useState(false);
-  const [selectedLoanForRemark, setSelectedLoanForRemark] = useState(null);
-
-  // Search and filter states
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [amountFilter, setAmountFilter] = useState({ min: "", max: "" });
-  const [showExtendedCases, setShowExtendedCases] = useState(false);
-
-  // Tab state - 0: Pending Assignment, 1: Assigned, 2: Processed, 3: Hung Up, 4: Completed
-  const [activeTab, setActiveTab] = useState(0);
-
-  const tabLabels = [
-    "Pending Assignment",
-    "Assigned",
-    "Processed",
-    "Hung Up",
-    "Completed",
-  ];
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [assignModal, setAssignModal] = useState(null);
+  const [assignOfficer, setAssignOfficer] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchPreCollectionLoans();
-    fetchOfficers();
-  }, [activeTab]);
+    const t = setTimeout(() => setSearch(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  // Filter loans based on search criteria
   useEffect(() => {
-    let filtered = [...loans];
+    setPage(1);
+  }, [search, activeTab]);
 
-    // Search by name, email, or loan ID
-    if (searchTerm) {
-      filtered = filtered.filter((loan) => {
-        const fullName =
-          `${loan.userId?.firstName || ""} ${loan.userId?.lastName || ""}`.toLowerCase();
-        const email = loan.userId?.email?.toLowerCase() || "";
-        const loanId = loan.loanId?.toLowerCase() || "";
-        const searchLower = searchTerm.toLowerCase();
-
-        return (
-          fullName.includes(searchLower) ||
-          email.includes(searchLower) ||
-          loanId.includes(searchLower)
-        );
-      });
-    }
-
-    // Filter by amount range
-    if (amountFilter.min || amountFilter.max) {
-      filtered = filtered.filter((loan) => {
-        const amount = loan.loanAmount || 0;
-        const min = parseFloat(amountFilter.min) || 0;
-        const max = parseFloat(amountFilter.max) || Infinity;
-        return amount >= min && amount <= max;
-      });
-    }
-
-    // Apply day-based filtering for Pending Assignment tab
-    if (activeTab === 0) {
-      filtered = filtered.filter((loan) => {
-        const daysToDue = calculateDaysToDue(loan.dueDate);
-
-        // Show cases that are -2, -1, or 0 days to due date
-        // Super admin can also see -3+ days if showExtendedCases is enabled
-        if (daysToDue >= -2) {
-          return true;
-        }
-
-        return isSuperAdmin() && showExtendedCases;
-      });
-    }
-
-    setFilteredLoans(filtered);
-  }, [loans, searchTerm, amountFilter, showExtendedCases, activeTab]);
-
-  const calculateDaysToDue = (dueDate) => {
-    if (!dueDate) return 0;
-    const today = new Date();
-    const due = new Date(dueDate);
-    const diffTime = due - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const getDaysToDueChip = (dueDate) => {
-    const days = calculateDaysToDue(dueDate);
-    const cls =
-      days < 0
-        ? "bg-red-50 text-red-700 border-red-200"
-        : days === 0
-          ? "bg-amber-50 text-amber-700 border-amber-200"
-          : days <= 2
-            ? "bg-amber-50 text-amber-600 border-amber-200"
-            : "bg-emerald-50 text-emerald-700 border-emerald-200";
-    const label =
-      days < 0
-        ? `${Math.abs(days)}d overdue`
-        : days === 0
-          ? "Due today"
-          : `${days}d`;
-    return (
-      <span
-        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}
-      >
-        {label}
-      </span>
-    );
-  };
-
-  const fetchOfficers = async () => {
+  const fetchLoans = useCallback(async () => {
+    setLoading(true);
     try {
-      const response = await fetch("/api/admin-management/officers", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-        },
+      const params = new URLSearchParams({
+        status: activeTab,
+        page,
+        limit: 20,
+        ...(search ? { search } : {}),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setOfficers(data.officers || []);
+      const res = await fetch(`${API_BASE}/precollection/cases?${params}`, {
+        headers: authHeader(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLoans(data.loans || []);
+        setTotal(data.total || 0);
+      } else {
+        toast.error(data.message || "Failed to load cases");
       }
-    } catch (err) {
-      console.error("Failed to fetch officers:", err);
-    }
-  };
-
-  const fetchPreCollectionLoans = async () => {
-    try {
-      setLoading(true);
-
-      // Map tab index to precollection status
-      const statusMap = {
-        0: "pending_assignment", // Pending Assignment
-        1: "assigned", // Assigned
-        2: "processed", // Processed (has remarks)
-        3: "hung_up", // Hung Up
-        4: "completed", // Completed
-      };
-
-      const precollectionStatus = statusMap[activeTab] || "pending_assignment";
-      const response = await fetch(
-        `/api/admin/loans?status=${precollectionStatus}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch loans");
-      }
-
-      const data = await response.json();
-      setLoans(data.loans || []);
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      toast.error("Network error loading cases");
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, page, search]);
 
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-  };
-
-  const handleAction = (loan, action) => {
-    if (action === "processed") {
-      // Open remark dialog for processed action
-      setSelectedLoanForRemark(loan);
-      setRemarkDialogOpen(true);
-    } else {
-      // Handle other actions with existing dialog
-      setSelectedLoan(loan);
-      setActionType(action);
-      setDialogOpen(true);
-      setRemarks("");
-      setCallOutcome("");
-      setNextFollowUp("");
-      setAssignOfficer("");
-    }
-  };
-
-  const handleSubmitAction = async () => {
-    if (!selectedLoan || !actionType) return;
-
+  const fetchOfficers = useCallback(async () => {
     try {
-      setSubmitting(true);
+      const params = new URLSearchParams({
+        role: "precollection-officer,precollection-lead",
+        status: "active",
+      });
+      const res = await fetch(
+        `${API_BASE}/admin-management/officers?${params}`,
+        { headers: authHeader() },
+      );
+      const data = await res.json();
+      if (data.success) setOfficers(data.data || []);
+    } catch {
+      /* silent */
+    }
+  }, []);
 
-      if (actionType === "assign") {
-        // Assign officer to case
-        const response = await fetch(
-          `/api/loans/${selectedLoan._id}/assign-officer`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-            },
-            body: JSON.stringify({
-              type: "precollection",
-              officerId: assignOfficer,
-              assignedBy: user._id,
-            }),
-          },
-        );
+  useEffect(() => {
+    fetchOfficers();
+  }, [fetchOfficers]);
+  useEffect(() => {
+    fetchLoans();
+  }, [fetchLoans]);
 
-        if (!response.ok) {
-          throw new Error("Failed to assign officer");
-        }
+  const handleAssign = async () => {
+    if (!assignOfficer) return toast.error("Select an officer");
+    setSubmitting(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/precollection/cases/${assignModal.loanId}/assign`,
+        {
+          method: "PATCH",
+          headers: authHeader(),
+          body: JSON.stringify({ officerId: assignOfficer }),
+        },
+      );
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Case assigned successfully");
+        setAssignModal(null);
+        setAssignOfficer("");
+        fetchLoans();
       } else {
-        // Add remark (for processed, hung_up actions)
-        const remarkResponse = await fetch(
-          `/api/loans/${selectedLoan._id}/remarks`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-            },
-            body: JSON.stringify({
-              type: "precollection",
-              content: remarks,
-              callOutcome,
-              nextFollowUp: nextFollowUp || null,
-              addedBy: user._id,
-            }),
-          },
-        );
-
-        if (!remarkResponse.ok) {
-          throw new Error("Failed to add remark");
-        }
-
-        // Update precollection status
-        const statusResponse = await fetch(
-          `/api/loans/${selectedLoan._id}/precollection-status`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-            },
-            body: JSON.stringify({
-              status: actionType,
-              updatedBy: user._id,
-            }),
-          },
-        );
-
-        if (!statusResponse.ok) {
-          throw new Error("Failed to update status");
-        }
+        toast.error(data.message || "Assignment failed");
       }
-
-      setDialogOpen(false);
-      fetchPreCollectionLoans();
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      toast.error("Network error");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Handle remark dialog submission
-  const handleRemarkSubmit = async (remarkData) => {
+  const handleUnassign = async (loanId) => {
     try {
-      // Add remark
-      const remarkResponse = await fetch(
-        `/api/loans/${selectedLoanForRemark._id}/remarks`,
+      const res = await fetch(
+        `${API_BASE}/precollection/cases/${loanId}/unassign`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-          },
-          body: JSON.stringify({
-            type: "precollection",
-            content: remarkData.remark,
-            paymentStatus: remarkData.paymentStatus,
-            paymentAmount: remarkData.paymentAmount,
-            addedBy: user._id,
-          }),
+          method: "PATCH",
+          headers: authHeader(),
         },
       );
-
-      if (!remarkResponse.ok) {
-        throw new Error("Failed to add remark");
-      }
-
-      // Update precollection status to processed
-      const statusResponse = await fetch(
-        `/api/loans/${selectedLoanForRemark._id}/precollection-status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
-          },
-          body: JSON.stringify({
-            status: "processed",
-            updatedBy: user._id,
-          }),
-        },
-      );
-
-      if (!statusResponse.ok) {
-        throw new Error("Failed to update status");
-      }
-
-      setRemarkDialogOpen(false);
-      setSelectedLoanForRemark(null);
-      fetchPreCollectionLoans();
-    } catch (err) {
-      setError(err.message);
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Case unassigned");
+        fetchLoans();
+      } else toast.error(data.message || "Failed");
+    } catch {
+      toast.error("Network error");
     }
   };
 
-  const getStatusChip = (status) => {
-    const statusConfig = {
-      pending_assignment: {
-        label: "Pending Assignment",
-        cls: "bg-gray-100 text-gray-700 border-gray-200",
-      },
-      assigned: {
-        label: "Assigned",
-        cls: "bg-blue-50 text-blue-700 border-blue-200",
-      },
-      processed: {
-        label: "Processed",
-        cls: "bg-indigo-50 text-indigo-700 border-indigo-200",
-      },
-      hung_up: {
-        label: "Hung Up",
-        cls: "bg-amber-50 text-amber-700 border-amber-200",
-      },
-      completed: {
-        label: "Completed",
-        cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      },
-    };
-
-    const config = statusConfig[status] || statusConfig.pending_assignment;
-    return (
-      <span
-        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${config.cls}`}
-      >
-        {config.label}
-      </span>
-    );
+  const handleReserve = async (loanId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/precollection/cases/${loanId}/reserve`,
+        {
+          method: "PATCH",
+          headers: authHeader(),
+        },
+      );
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Case reserved — set to hung-up");
+        fetchLoans();
+      } else toast.error(data.message || "Failed");
+    } catch {
+      toast.error("Network error");
+    }
   };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-GH", {
-      style: "currency",
-      currency: "GHS",
-    }).format(amount || 0);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("en-GB");
-  };
-
-  const STATUS_BADGE = {
-    pending_assignment: "bg-amber-50 text-amber-700 border-amber-200",
-    assigned: "bg-blue-50 text-blue-700 border-blue-200",
-    processed: "bg-purple-50 text-purple-700 border-purple-200",
-    hung_up: "bg-red-50 text-red-700 border-red-200",
-    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  };
-  const inp =
-    "w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
-
-  if (loading) {
-    return (
-      <div className="p-6 bg-gray-50 min-h-screen w-full flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <FiRefreshCw size={16} className="animate-spin" /> Loading
-          pre-collection loans...
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen w-full">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-          <FiLayers size={18} className="text-blue-600" />
-        </div>
+    <div className="p-6 bg-gray-50 min-h-screen">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 m-0 leading-none">
-            Pre-Assignment Management
+          <h1 className="text-2xl font-bold text-gray-800 leading-none">
+            Pre-Collection Cases
           </h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Manage case assignments for loans approaching due dates
+          <p className="text-xs text-gray-400 mt-1">
+            Manage active loans approaching due date — {total} cases
           </p>
         </div>
+        <button
+          onClick={() => {
+            fetchLoans();
+            fetchOfficers();
+          }}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition"
+        >
+          <FiRefreshCw size={14} className={loading ? "animate-spin" : ""} />{" "}
+          Refresh
+        </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 mb-5 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-5">
-        {tabLabels.map((tab, i) => (
+      <div className="flex gap-1 mb-5 bg-white border border-gray-200 rounded-xl p-1 w-fit flex-wrap">
+        {TABS.map((tab) => (
           <button
-            key={i}
-            onClick={() => handleTabChange(null, i)}
-            className={`px-4 py-2 text-sm font-semibold rounded-xl border transition ${activeTab === i ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+            key={tab.key}
+            onClick={() => {
+              setActiveTab(tab.key);
+              setPage(1);
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
           >
-            {tab}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <FiSearch
-              size={13}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-            <input
-              type="text"
-              placeholder="Search by name, email, or loan ID"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            />
-          </div>
-          <input
-            type="number"
-            placeholder="Min Amount"
-            value={amountFilter.min}
-            onChange={(e) =>
-              setAmountFilter((p) => ({ ...p, min: e.target.value }))
-            }
-            className="px-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
-          />
-          <input
-            type="number"
-            placeholder="Max Amount"
-            value={amountFilter.max}
-            onChange={(e) =>
-              setAmountFilter((p) => ({ ...p, max: e.target.value }))
-            }
-            className="px-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
-          />
-          {activeTab === 0 && isSuperAdmin() && (
-            <label className="flex items-center gap-2 text-sm text-gray-600 font-semibold cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showExtendedCases}
-                onChange={(e) => setShowExtendedCases(e.target.checked)}
-                className="accent-blue-600"
-              />
-              Show -3+ days cases
-            </label>
-          )}
-          <button
-            onClick={() => {
-              setSearchTerm("");
-              setAmountFilter({ min: "", max: "" });
-              setShowExtendedCases(false);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2.5 text-sm text-gray-500 border border-gray-200 rounded-xl bg-white hover:bg-gray-50 transition"
-          >
-            <FiX size={12} /> Clear
-          </button>
-        </div>
+      {/* Search */}
+      <div className="relative mb-4 max-w-sm">
+        <FiSearch
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          size={14}
+        />
+        <input
+          type="text"
+          placeholder="Search name, phone, loan ID…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto mb-5 w-full">
-        <table style={{ minWidth: "780px" }} className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+        <table
+          className="w-full text-sm border-collapse"
+          style={{ minWidth: 680 }}
+        >
+          <thead>
+            <tr className="bg-gray-50 text-left border-b border-gray-100">
               {[
+                "Customer",
                 "Loan ID",
-                "Client Name",
+                "Balance",
                 "Due Date",
-                "Days to Due",
-                "Amount",
-                "Status",
-                ...(activeTab === 1 ? ["Assigned Officer"] : []),
-                ...(activeTab === 2 || activeTab === 3 ? ["Last Remark"] : []),
+                "Officer",
                 "Actions",
               ].map((h) => (
                 <th
                   key={h}
-                  className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-100 text-left whitespace-nowrap"
+                  className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap"
                 >
                   {h}
                 </th>
@@ -534,265 +356,173 @@ const PreCollectionList = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {filteredLoans.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-16 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+                    <p className="text-sm text-gray-400">Loading cases…</p>
+                  </div>
+                </td>
+              </tr>
+            ) : loans.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
-                  className="px-4 py-12 text-center text-sm text-gray-400"
+                  colSpan={6}
+                  className="px-4 py-16 text-center text-sm text-gray-400"
                 >
-                  No loans found for this category
+                  No{" "}
+                  {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()}{" "}
+                  cases found.
                 </td>
               </tr>
             ) : (
-              filteredLoans.map((loan) => (
-                <tr key={loan._id} className="hover:bg-gray-50/60 transition">
-                  <td className="px-4 py-3 text-xs font-mono text-gray-600">
-                    {loan.loanId}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1 text-xs font-semibold text-gray-700">
-                      <FiUser size={11} />
-                      {`${loan.userId?.firstName || ""} ${loan.userId?.lastName || ""}`.trim()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <FiCalendar size={11} />
-                      {formatDate(loan.dueDate)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {getDaysToDueChip(loan.dueDate)}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-semibold text-gray-700">
-                    <span className="flex items-center gap-1">
-                      <FiDollarSign size={11} />
-                      {formatCurrency(loan.loanAmount)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_BADGE[loan.precollectionStatus] || STATUS_BADGE.pending_assignment}`}
-                    >
-                      {(loan.precollectionStatus || "pending").replace(
-                        /_/g,
-                        " ",
-                      )}
-                    </span>
-                  </td>
-                  {activeTab === 1 && (
-                    <td className="px-4 py-3 text-xs text-gray-600">
-                      {loan.precollectionOfficer ? (
-                        `${loan.precollectionOfficer.firstName} ${loan.precollectionOfficer.lastName}`
+              loans.map((loan) => {
+                const officer = loan.PrecollectionOfficer;
+                return (
+                  <tr
+                    key={loan.id}
+                    className="hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-800">
+                        {loan.User?.firstName} {loan.User?.lastName}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {loan.User?.phoneNumber}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                      {loan.loanId?.slice(-10) || loan.id?.slice(-8)}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-800">
+                      {fmt(loan.remainingBalance)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <DueBadge dueDate={loan.dueDate} />
+                    </td>
+                    <td className="px-4 py-3">
+                      {officer ? (
+                        <span className="text-sm text-gray-700">
+                          {officer.firstName} {officer.lastName}
+                        </span>
                       ) : (
-                        <span className="text-gray-300 italic">
-                          Not assigned
+                        <span className="text-xs text-gray-400 italic">
+                          Unassigned
                         </span>
                       )}
                     </td>
-                  )}
-                  {(activeTab === 2 || activeTab === 3) && (
-                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px] truncate">
-                      {loan.precollectionRemarks?.length > 0 ? (
-                        loan.precollectionRemarks[
-                          loan.precollectionRemarks.length - 1
-                        ].content.substring(0, 50) + "..."
-                      ) : (
-                        <span className="text-gray-300 italic">No remarks</span>
-                      )}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {activeTab === "pending-assignment" && (
+                          <button
+                            onClick={() => {
+                              setAssignModal({ loanId: loan.id });
+                              setAssignOfficer("");
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                          >
+                            Assign
+                          </button>
+                        )}
+                        {activeTab === "assigned" && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setAssignModal({ loanId: loan.id });
+                                setAssignOfficer(officer?.id || "");
+                              }}
+                              className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
+                            >
+                              Reassign
+                            </button>
+                            <button
+                              onClick={() => handleUnassign(loan.id)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+                            >
+                              Unassign
+                            </button>
+                            <button
+                              onClick={() => handleReserve(loan.id)}
+                              className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
+                            >
+                              Reserve
+                            </button>
+                          </>
+                        )}
+                        {activeTab === "hung-up" && (
+                          <button
+                            onClick={() => handleUnassign(loan.id)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+                          >
+                            Release
+                          </button>
+                        )}
+                      </div>
                     </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {activeTab === 0 && (
-                        <button
-                          onClick={() => handleAction(loan, "assign")}
-                          className="px-2.5 py-1 text-[10px] font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
-                        >
-                          Assign
-                        </button>
-                      )}
-                      {activeTab === 1 && (
-                        <>
-                          <button
-                            onClick={() => handleAction(loan, "processed")}
-                            className="px-2.5 py-1 text-[10px] font-semibold text-blue-600 border border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
-                          >
-                            Add Remark
-                          </button>
-                          <button
-                            onClick={() => handleAction(loan, "hung_up")}
-                            className="px-2.5 py-1 text-[10px] font-semibold text-amber-600 border border-amber-200 bg-amber-50 rounded-lg hover:bg-amber-100 transition"
-                          >
-                            Hung Up
-                          </button>
-                        </>
-                      )}
-                      {(activeTab === 2 || activeTab === 3) && (
-                        <button
-                          onClick={() => handleAction(loan, "add_remark")}
-                          className="px-2.5 py-1 text-[10px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-                        >
-                          Add Remark
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Action Modal */}
-      {dialogOpen &&
-        selectedLoan &&
-        ReactDOM.createPortal(
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 1200,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.35)",
-            }}
+      {/* Pagination */}
+      {total > 20 && (
+        <div className="flex items-center justify-center gap-4 mt-4">
+          <button
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 1}
+            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
           >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: "16px",
-                maxWidth: "480px",
-                width: "100%",
-                maxHeight: "90vh",
-                overflowY: "auto",
-                margin: "0 16px",
-              }}
-            >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <p className="font-bold text-gray-800 text-base m-0">
-                  {actionType === "assign" ? "Assign Officer" : "Add Remark"}
-                </p>
-                <button
-                  onClick={() => setDialogOpen(false)}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
-                >
-                  <FiX size={14} />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                {actionType === "assign" ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
-                      Select Officer
-                    </label>
-                    <select
-                      value={assignOfficer}
-                      onChange={(e) => setAssignOfficer(e.target.value)}
-                      className={inp}
-                    >
-                      <option value="">Select an officer...</option>
-                      {officers.map((o) => (
-                        <option key={o._id} value={o._id}>
-                          {o.firstName} {o.lastName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
-                        Remarks *
-                      </label>
-                      <textarea
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                        rows={4}
-                        className={`${inp} resize-none`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
-                        Call Outcome
-                      </label>
-                      <select
-                        value={callOutcome}
-                        onChange={(e) => setCallOutcome(e.target.value)}
-                        className={inp}
-                      >
-                        <option value="">Select outcome...</option>
-                        {[
-                          "answered",
-                          "no_answer",
-                          "busy",
-                          "unreachable",
-                          "promise_to_pay",
-                          "partial_payment",
-                          "full_payment",
-                        ].map((v) => (
-                          <option key={v} value={v}>
-                            {v.replace(/_/g, " ")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
-                        Next Follow-up
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={nextFollowUp}
-                        onChange={(e) => setNextFollowUp(e.target.value)}
-                        className={inp}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={handleSubmitAction}
-                    disabled={
-                      submitting ||
-                      (actionType === "assign" && !assignOfficer) ||
-                      (actionType !== "assign" && !remarks)
-                    }
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition"
-                  >
-                    {submitting ? (
-                      <>
-                        <FiRefreshCw size={13} className="animate-spin" />{" "}
-                        Processing...
-                      </>
-                    ) : (
-                      "Submit"
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setDialogOpen(false)}
-                    className="px-4 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+            ← Prev
+          </button>
+          <span className="text-sm text-gray-500">
+            Page {page} · {total} total
+          </span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={loans.length < 20}
+            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
-      <RemarkDialog
-        open={remarkDialogOpen}
-        onClose={() => {
-          setRemarkDialogOpen(false);
-          setSelectedLoanForRemark(null);
-        }}
-        onSubmit={handleRemarkSubmit}
-        loan={selectedLoanForRemark}
-      />
+      {/* Assign Modal */}
+      {assignModal && (
+        <Modal title="Assign Officer" onClose={() => setAssignModal(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                Select Officer
+              </label>
+              <OfficerSelect
+                officers={officers}
+                value={assignOfficer}
+                onChange={setAssignOfficer}
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setAssignModal(null)}
+                className="flex-1 px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssign}
+                disabled={submitting || !assignOfficer}
+                className="flex-1 px-4 py-2 text-sm text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition font-semibold disabled:opacity-50"
+              >
+                {submitting ? "Assigning…" : "Assign"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
