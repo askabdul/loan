@@ -31,9 +31,6 @@ const AppConfiguration = () => {
 
   const configTabs = [
     { id: "loan", label: "Loan Settings", icon: FiDollarSign },
-    { id: "loanCalculations", label: "Loan Calculations", icon: FiDollarSign },
-    { id: "contactInfo", label: "Contact Info", icon: FiMail },
-    { id: "appBranding", label: "App Branding", icon: FiSettings },
     { id: "system", label: "System Settings", icon: FiSettings },
     { id: "security", label: "Security", icon: FiShield },
     { id: "email", label: "Email Configuration", icon: FiMail },
@@ -45,7 +42,9 @@ const AppConfiguration = () => {
     try {
       setLoading(true);
       const response = await apiService.getConfiguration();
-      const configData = response.data || [];
+      const configData = Array.isArray(response.data)
+        ? response.data
+        : Object.entries(response.config || {}).map(([key, value]) => ({ key, value }));
 
       // Transform array of config objects to categorized structure
       const categorizedConfig = {

@@ -17,6 +17,7 @@ const { adminAuth } = require("../middleware/auth");
 const {
   requireMenuAccess,
   requireSubMenuAccess,
+  requireAnySubMenuAccess,
   requireDataAccess,
   requireActionPermission,
   filterLoansByRole,
@@ -58,7 +59,8 @@ const loanUserInclude = {
 // GET /api/admin/dashboard/overview
 router.get(
   "/dashboard/overview",
-  requireMenuAccess("dashboard"),
+  requireMenuAccess("dataStatistics"),
+  requireSubMenuAccess("dataStatistics", "dashboard"),
   catchAsync(async (req, res, next) => {
     const [
       loanStats,
@@ -146,9 +148,13 @@ router.get(
       failedPayments: 0,
     };
 
+    const disbursedStatuses = ["disbursed", "active", "overdue", "completed"];
+
     loanStats.forEach((s) => {
       dashboardStats.totalLoans += parseInt(s.count) || 0;
-      dashboardStats.totalDisbursed += parseFloat(s.totalDisbursed) || 0;
+      if (disbursedStatuses.includes(s.status)) {
+        dashboardStats.totalDisbursed += parseFloat(s.totalDisbursed) || 0;
+      }
       if (["approved", "disbursed", "active"].includes(s.status))
         dashboardStats.activeLoans += parseInt(s.count) || 0;
       else if (["pending", "under-review"].includes(s.status))
@@ -190,7 +196,7 @@ router.get(
 router.get(
   "/users",
   requireMenuAccess("userManagement"),
-  requireDataAccess("users"),
+  requireSubMenuAccess("user", "listOfUsers"),
   filterUserData,
   catchAsync(async (req, res, next) => {
     const {
@@ -242,7 +248,7 @@ router.get(
 router.get(
   "/users/:id",
   requireMenuAccess("userManagement"),
-  requireDataAccess("users"),
+  requireSubMenuAccess("user", "listOfUsers"),
   catchAsync(async (req, res, next) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return next(new AppError("User not found", 404));
@@ -299,6 +305,7 @@ router.get(
 router.put(
   "/users/:id",
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   requireActionPermission("editUsers"),
   [
     body("firstName").optional().isString().trim().notEmpty(),
@@ -350,6 +357,7 @@ router.put(
 router.patch(
   "/users/:id/status",
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   [body("isActive").isBoolean(), body("reason").optional().isString()],
   catchAsync(async (req, res, next) => {
     const errors = validationResult(req);
@@ -373,6 +381,7 @@ router.patch(
 router.patch(
   "/users/:id/level",
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "levelAssignment"),
   requireActionPermission("updateUserLevel"),
   [
     body("level").isInt({ min: 1, max: 10 }),
@@ -417,8 +426,10 @@ router.patch(
 // GET /api/admin/loans
 router.get(
   "/loans",
-  requireMenuAccess("creditReview"),
-  requireDataAccess("loans"),
+  requireAnySubMenuAccess([
+    { menu: "creditReview", subMenu: "list" },
+    { menu: "order", subMenu: "orderList" },
+  ]),
   filterLoansByRole,
   filterLoanData,
   catchAsync(async (req, res, next) => {
@@ -538,8 +549,11 @@ router.get(
 // GET /api/admin/loans/:id
 router.get(
   "/loans/:id",
-  requireMenuAccess("loanManagement"),
-  requireDataAccess("loans"),
+  requireAnySubMenuAccess([
+    { menu: "creditReview", subMenu: "list" },
+    { menu: "order", subMenu: "orderList" },
+    { menu: "order", subMenu: "loanDetails" },
+  ]),
   catchAsync(async (req, res, next) => {
     const loan = await Loan.findByPk(req.params.id, {
       include: [loanUserInclude],
@@ -556,7 +570,8 @@ router.get(
 // PATCH /api/admin/loans/:id/status
 router.patch(
   "/loans/:id/status",
-  requireMenuAccess("loanManagement"),
+  requireMenuAccess("creditReview"),
+  requireSubMenuAccess("creditReview", "list"),
   requireActionPermission("updateLoanStatus"),
   [
     body("status").isIn([
@@ -668,6 +683,7 @@ router.patch(
 router.post(
   "/loans/assign",
   requireMenuAccess("creditReview"),
+  requireSubMenuAccess("creditReview", "assign"),
   requireActionPermission("assignLoan"),
   [
     body("loanIds").isArray(),
@@ -745,7 +761,8 @@ router.post(
 // GET /api/admin/config
 router.get(
   "/config",
-  requireMenuAccess("systemConfig"),
+  requireMenuAccess("appConfiguration"),
+  requireSubMenuAccess("appConfiguration", "generalSettings"),
   requireDataAccess("configurations"),
   catchAsync(async (req, res, next) => {
     const configs = await AppConfig.findAll();
@@ -760,7 +777,8 @@ router.get(
 // PUT /api/admin/config/:key
 router.put(
   "/config/:key",
-  requireMenuAccess("systemConfig"),
+  requireMenuAccess("appConfiguration"),
+  requireSubMenuAccess("appConfiguration", "generalSettings"),
   requireActionPermission("updateConfiguration"),
   [body("value").exists()],
   catchAsync(async (req, res, next) => {
@@ -789,7 +807,8 @@ router.put(
 // PUT /api/admin/config
 router.put(
   "/config",
-  requireMenuAccess("systemConfig"),
+  requireMenuAccess("appConfiguration"),
+  requireSubMenuAccess("appConfiguration", "generalSettings"),
   requireActionPermission("updateConfiguration"),
   catchAsync(async (req, res, next) => {
     const configs = req.body;
@@ -835,7 +854,7 @@ router.get(
       where,
       order: [
         ["type", "ASC"],
-        ["sort_order", "ASC"],
+        ["sortOrder", "ASC"],
       ],
     });
     res.json({ success: true, data: content });
@@ -914,7 +933,8 @@ function getPeriodFilter(period) {
 // GET /api/admin/analytics/loans
 router.get(
   "/analytics/loans",
-  requireMenuAccess("analytics"),
+  requireMenuAccess("dataStatistics"),
+  requireSubMenuAccess("dataStatistics", "dashboard"),
   requireDataAccess("loanAnalytics"),
   filterLoansByRole,
   catchAsync(async (req, res, next) => {
@@ -960,7 +980,8 @@ router.get(
 // GET /api/admin/analytics/users
 router.get(
   "/analytics/users",
-  requireMenuAccess("analytics"),
+  requireMenuAccess("dataStatistics"),
+  requireSubMenuAccess("dataStatistics", "dashboard"),
   requireDataAccess("userAnalytics"),
   catchAsync(async (req, res, next) => {
     const where = getPeriodFilter(req.query.period || "30d");
@@ -1002,6 +1023,8 @@ router.get(
 
 router.get(
   "/roles",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "roleManagement"),
   catchAsync(async (req, res, next) => {
     const roles = await Role.findAll({
       where: { isActive: true },
@@ -1019,6 +1042,7 @@ router.get(
 router.get(
   "/payments/stats",
   requireMenuAccess("fundManagement"),
+  requireSubMenuAccess("fundManagement", "paymentManagement"),
   catchAsync(async (req, res) => {
     const rows = await Payment.findAll({
       attributes: [
@@ -1053,6 +1077,7 @@ router.get(
 router.get(
   "/payments",
   requireMenuAccess("fundManagement"),
+  requireSubMenuAccess("fundManagement", "paymentManagement"),
   requireDataAccess("payments"),
   filterPaymentData,
   catchAsync(async (req, res, next) => {
@@ -1116,6 +1141,8 @@ router.get(
 
 router.get(
   "/overdue-tracking/status",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     res.json({ success: true, status: overdueTrackingService.getStatus() });
@@ -1124,6 +1151,8 @@ router.get(
 
 router.post(
   "/overdue-tracking/manual-check",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     overdueTrackingService
@@ -1138,6 +1167,8 @@ router.post(
 
 router.post(
   "/overdue-tracking/start",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     overdueTrackingService.start();
@@ -1150,6 +1181,8 @@ router.post(
 
 router.post(
   "/overdue-tracking/stop",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     overdueTrackingService.stop();

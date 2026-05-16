@@ -139,8 +139,8 @@ const OfficerAssignmentModal = ({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg flex flex-col"
-        style={{ maxHeight: "90vh", width: "60dvw !important" }}
+        className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-2xl flex flex-col"
+        style={{ maxHeight: "90vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

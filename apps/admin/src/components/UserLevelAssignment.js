@@ -21,6 +21,12 @@ const LEVEL_COLORS = [
 ];
 
 const levelColor = (lvl) => LEVEL_COLORS[(parseInt(lvl) - 1) % LEVEL_COLORS.length] || "bg-gray-100 text-gray-600 border-gray-200";
+const userIdOf = (user) => user?._id || user?.id;
+const levelIdOf = (level) => level?.id || level?._id;
+const levelNumOf = (level) => {
+  const number = Number(level?.level);
+  return Number.isFinite(number) ? number : null;
+};
 
 const UserLevelAssignment = ({ onClose }) => {
   const [users, setUsers]           = useState([]);
@@ -47,7 +53,12 @@ const UserLevelAssignment = ({ onClose }) => {
       });
       if (res.success) {
         setUsers(res.data.users || []);
-        setTotalPages(res.data.pagination?.total || 1);
+        const pageCount =
+          Number(res.data.pagination?.pages) ||
+          Number(res.data.pagination?.totalPages) ||
+          Number(res.data.pagination?.total) ||
+          1;
+        setTotalPages(pageCount);
         setTotalCount(res.data.pagination?.count || 0);
       }
     } catch {
@@ -76,6 +87,7 @@ const UserLevelAssignment = ({ onClose }) => {
 
   const handleSaveEdit = async () => {
     if (!editLevel) { toast.error("Select a level"); return; }
+    if (!editingUserId) { toast.error("No user selected"); return; }
     setLoading(true);
     try {
       const res = await apiService.updateUserLevel(editingUserId, editLevel);
@@ -92,6 +104,10 @@ const UserLevelAssignment = ({ onClose }) => {
   };
 
   const handleQuickLevel = async (userId, levelId) => {
+    if (!userId || !levelId) {
+      toast.error("Unable to update level. Please use Edit to select a valid level.");
+      return;
+    }
     setLoading(true);
     try {
       const res = await apiService.updateUserLevel(userId, levelId);
@@ -118,10 +134,14 @@ const UserLevelAssignment = ({ onClose }) => {
   };
 
   const allSelected = users.length > 0 && selectedIds.length === users.length;
-  const toggleAll   = () => setSelectedIds(allSelected ? [] : users.map((u) => u._id));
+  const toggleAll   = () => setSelectedIds(allSelected ? [] : users.map((u) => userIdOf(u)).filter(Boolean));
   const toggleOne   = (id) => setSelectedIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
 
   const inp = "w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+  const maxConfiguredLevel = Math.max(
+    ...loanLevels.map((l) => levelNumOf(l)).filter(Number.isFinite),
+    0,
+  );
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen w-full">
@@ -237,17 +257,22 @@ const UserLevelAssignment = ({ onClose }) => {
               </tr>
             ) : (
               users.map((user) => {
+                const userId = userIdOf(user);
                 const lvl = user.currentLevel;
-                const lvlNum = lvl?.level;
-                const isEditing = editingUserId === user._id;
+                const lvlNum =
+                  Number(lvl?.level) ||
+                  Number(user.currentLoanLevel) ||
+                  Number(user.loanLevel) ||
+                  0;
+                const isEditing = editingUserId === userId;
                 return (
-                  <tr key={user._id} className={`hover:bg-gray-50/60 transition-colors ${selectedIds.includes(user._id) ? "bg-blue-50/30" : ""}`}>
+                  <tr key={userId} className={`hover:bg-gray-50/60 transition-colors ${selectedIds.includes(userId) ? "bg-blue-50/30" : ""}`}>
                     <td className="px-4 py-3">
-                      <input type="checkbox" checked={selectedIds.includes(user._id)} onChange={() => toggleOne(user._id)} className="accent-blue-600" />
+                      <input type="checkbox" checked={selectedIds.includes(userId)} onChange={() => toggleOne(userId)} className="accent-blue-600" />
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-gray-800">{user.name || "—"}</p>
-                      <p className="text-xs text-gray-400 font-mono">{user._id?.slice(-8)}</p>
+                      <p className="text-xs text-gray-400 font-mono">{userId?.slice(-8)}</p>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-sm text-gray-600">{user.email || "—"}</p>
@@ -300,8 +325,11 @@ const UserLevelAssignment = ({ onClose }) => {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => {
-                              setEditingUserId(user._id);
-                              setEditLevel(lvl?.id || "");
+                              setEditingUserId(userId);
+                              const fallbackLevel = loanLevels.find(
+                                (l) => levelNumOf(l) === lvlNum,
+                              );
+                              setEditLevel(levelIdOf(lvl) || levelIdOf(fallbackLevel) || "");
                             }}
                             disabled={loading}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50"
@@ -311,8 +339,14 @@ const UserLevelAssignment = ({ onClose }) => {
                           {lvlNum > 1 && (
                             <button
                               onClick={() => {
-                                const lower = loanLevels.find((l) => l.level === lvlNum - 1);
-                                if (lower) handleQuickLevel(user._id, lower.id);
+                                const lower = loanLevels.find(
+                                  (l) => levelNumOf(l) === lvlNum - 1,
+                                );
+                                if (!lower) {
+                                  toast.error("Lower level not available");
+                                  return;
+                                }
+                                handleQuickLevel(userId, levelIdOf(lower));
                               }}
                               disabled={loading}
                               title="Downgrade Level"
@@ -321,11 +355,17 @@ const UserLevelAssignment = ({ onClose }) => {
                               <FiArrowDown size={12} />
                             </button>
                           )}
-                          {lvlNum < 5 && (
+                          {lvlNum > 0 && lvlNum < maxConfiguredLevel && (
                             <button
                               onClick={() => {
-                                const higher = loanLevels.find((l) => l.level === lvlNum + 1);
-                                if (higher) handleQuickLevel(user._id, higher.id);
+                                const higher = loanLevels.find(
+                                  (l) => levelNumOf(l) === lvlNum + 1,
+                                );
+                                if (!higher) {
+                                  toast.error("Higher level not available");
+                                  return;
+                                }
+                                handleQuickLevel(userId, levelIdOf(higher));
                               }}
                               disabled={loading}
                               title="Upgrade Level"

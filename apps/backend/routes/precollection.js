@@ -7,22 +7,25 @@
 const express = require("express");
 const { Op, fn, col } = require("sequelize");
 const { adminAuth } = require("../middleware/auth");
+const { requireMenuAccess, requireSubMenuAccess } = require("../middleware/roleAuth");
 const { Loan, User, Admin, Payment, Role } = require("../models");
 
 const router = express.Router();
 
 router.use(adminAuth);
+router.use(requireMenuAccess("preCollection"));
 
 // ── GET /cases ────────────────────────────────────────────────────────────────
-router.get("/cases", async (req, res) => {
+router.get("/cases", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const { status, officerId, page = 1, limit = 20 } = req.query;
     const where = { status: "active" };
+    const adminRoleName = req.admin?.Role?.name || req.admin?.role?.name;
 
     if (status) where.precollectionStatus = status;
 
     // Officers see only their own cases
-    if (req.admin.role?.name === "precollection-officer") {
+    if (adminRoleName === "precollection-officer") {
       where.precollectionOfficerId = req.admin.id;
     } else if (officerId) {
       where.precollectionOfficerId = officerId;
@@ -60,7 +63,7 @@ router.get("/cases", async (req, res) => {
 });
 
 // ── PATCH /cases/:id/assign ───────────────────────────────────────────────────
-router.patch("/cases/:id/assign", async (req, res) => {
+router.patch("/cases/:id/assign", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const { officerId } = req.body;
     const loan = await Loan.findByPk(req.params.id);
@@ -81,7 +84,7 @@ router.patch("/cases/:id/assign", async (req, res) => {
 });
 
 // ── PATCH /cases/:id/unassign ─────────────────────────────────────────────────
-router.patch("/cases/:id/unassign", async (req, res) => {
+router.patch("/cases/:id/unassign", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -101,7 +104,7 @@ router.patch("/cases/:id/unassign", async (req, res) => {
 });
 
 // ── PATCH /cases/:id/reserve ──────────────────────────────────────────────────
-router.patch("/cases/:id/reserve", async (req, res) => {
+router.patch("/cases/:id/reserve", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -122,7 +125,7 @@ router.patch("/cases/:id/reserve", async (req, res) => {
 });
 
 // ── POST /bulk-assign ─────────────────────────────────────────────────────────
-router.post("/bulk-assign", async (req, res) => {
+router.post("/bulk-assign", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const { loanIds, officerIds, mode = "equal" } = req.body;
     if (
@@ -184,7 +187,7 @@ router.post("/bulk-assign", async (req, res) => {
 
 // ── GET /repayments ───────────────────────────────────────────────────────────
 // Payments received before the official due date
-router.get("/repayments", async (req, res) => {
+router.get("/repayments", requireSubMenuAccess("preCollection", "paymentRecord"), async (req, res) => {
   try {
     const { startDate, endDate, officerId, page = 1, limit = 20 } = req.query;
     const where = { status: "completed" };
@@ -249,7 +252,7 @@ router.get("/repayments", async (req, res) => {
 });
 
 // ── GET /rank1 ────────────────────────────────────────────────────────────────
-router.get("/rank1", async (req, res) => {
+router.get("/rank1", requireSubMenuAccess("preCollection", "rank1"), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const where = { status: "completed" };
@@ -300,7 +303,7 @@ router.get("/rank1", async (req, res) => {
 
 // ── GET /officer-performance ───────────────────────────────────────────────────
 // Aggregated performance per precollection officer — date range supported
-router.get("/officer-performance", async (req, res) => {
+router.get("/officer-performance", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -391,7 +394,7 @@ router.get("/officer-performance", async (req, res) => {
 
 // ── GET /officers ─────────────────────────────────────────────────────────────
 // Returns active precollection officers for assignment dropdowns
-router.get("/officers", async (req, res) => {
+router.get("/officers", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
     const roles = await Role.findAll({
       where: {

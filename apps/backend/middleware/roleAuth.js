@@ -76,6 +76,46 @@ const requireSubMenuAccess = (menuName, subMenuName) => {
   };
 };
 
+const requireAnySubMenuAccess = (subMenuRules = []) => {
+  return async (req, res, next) => {
+    try {
+      const admin = req.admin;
+      if (!admin) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      if (admin.Role && admin.Role?.name === "super-admin") {
+        return next();
+      }
+
+      const checks = await Promise.all(
+        (subMenuRules || []).map(async ({ menu, subMenu }) => {
+          if (!menu || !subMenu) return false;
+          return admin.canAccessSubMenu(menu, subMenu);
+        }),
+      );
+
+      if (checks.some((result) => result === true)) {
+        return next();
+      }
+
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to requested module",
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Error checking submenu permissions",
+        error: error.message,
+      });
+    }
+  };
+};
+
 // Middleware to check if admin has specific data access
 const requireDataAccess = (dataType, accessLevel = null) => {
   return async (req, res, next) => {
@@ -620,6 +660,7 @@ const requireMultiplePermissions = (permissions) => {
 module.exports = {
   requireMenuAccess,
   requireSubMenuAccess,
+  requireAnySubMenuAccess,
   requireDataAccess,
   requireActionPermission,
   requireUIElementAccess,

@@ -306,7 +306,7 @@ const FindUser = () => {
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen w-full">
+    <div className="relative p-6 bg-gray-50 min-h-screen w-full isolate overflow-x-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -683,8 +683,8 @@ const FindUser = () => {
 
       {/* ── Edit User Modal ── */}
       {editModal && user && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-2xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-800">
                 Edit User — {user.name}
@@ -794,8 +794,8 @@ const FindUser = () => {
 
       {/* ── Loan History Modal ── */}
       {loanHistoryModal && user && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[72vw] lg:w-[62vw] max-w-4xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-800">
                 Loan History — {user.name}
@@ -870,8 +870,8 @@ const FindUser = () => {
 
       {/* ── Send Message Modal ── */}
       {messageModal && user && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-800">
                 Send Message to {user.name}
@@ -960,8 +960,8 @@ const FindUser = () => {
 
       {/* ── Suspend / Activate Confirm ── */}
       {suspendModal && user && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[50vw] lg:w-[42vw] max-w-md p-6">
             <h3 className="font-bold text-gray-800 mb-2">
               {user.raw.isActive ? "Suspend User?" : "Activate User?"}
             </h3>

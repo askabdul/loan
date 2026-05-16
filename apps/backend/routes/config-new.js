@@ -7,7 +7,9 @@ const { Op } = require('sequelize');
 // GET / - public
 router.get('/', async (req, res) => {
   try {
-    const configs = await AppConfig.findAll({ where: { isPublic: true } });
+    const configs = await AppConfig.findAll({
+      where: { isPublic: true, isActive: true },
+    });
     const configObject = {};
     configs.forEach(c => { configObject[c.key] = c.value; });
     res.json({ success: true, data: configObject });

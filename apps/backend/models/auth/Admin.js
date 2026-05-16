@@ -225,21 +225,99 @@ Admin.prototype.getEffectivePermissions = async function () {
     return result;
   };
 
-  return merge(base, custom);
+  const merged = merge(base, custom);
+
+  merged.menus = merged.menus || {};
+  if (
+    Object.prototype.hasOwnProperty.call(merged.menus, "preCollection") ||
+    Object.prototype.hasOwnProperty.call(merged.menus, "precollection")
+  ) {
+    merged.menus.preCollection =
+      Boolean(merged.menus.preCollection) || Boolean(merged.menus.precollection);
+  }
+  delete merged.menus.precollection;
+
+  merged.subMenus = merged.subMenus || {};
+  const preCollectionSubMenus = merged.subMenus.preCollection || {};
+  const precollectionSubMenus = merged.subMenus.precollection || {};
+  const mergedSubMenuKeys = Array.from(
+    new Set([
+      ...Object.keys(preCollectionSubMenus),
+      ...Object.keys(precollectionSubMenus),
+    ]),
+  );
+  if (mergedSubMenuKeys.length > 0) {
+    merged.subMenus.preCollection = mergedSubMenuKeys.reduce((acc, key) => {
+      acc[key] =
+        Boolean(preCollectionSubMenus[key]) ||
+        Boolean(precollectionSubMenus[key]);
+      return acc;
+    }, {});
+  }
+  delete merged.subMenus.precollection;
+
+  return merged;
 };
 
 Admin.prototype.canAccessMenu = async function (menuName) {
   const role = this.Role || (await this.getRole());
   if (role && role.name === "super-admin") return true;
   const perms = await this.getEffectivePermissions();
-  return !!(perms.menus && perms.menus[menuName]);
+  const normalizeKey = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  const menuAliasGroups = {
+    user: ["user", "usermanagement"],
+    order: ["order", "loanmanagement"],
+    precollection: ["precollection"],
+    collection: ["collection"],
+    creditreview: ["creditreview"],
+    fundmanagement: ["fundmanagement"],
+    appconfiguration: ["appconfiguration", "systemconfig", "config"],
+    datastatistics: ["datastatistics", "dashboard", "analytics"],
+    system: ["system", "adminmanagement"],
+    contentmanagement: ["contentmanagement", "content"],
+    notificationmanagement: ["notificationmanagement", "notifications"],
+  };
+  const normalizeMenuGroup = (value) => {
+    const key = normalizeKey(value);
+    const group = Object.entries(menuAliasGroups).find(([, aliases]) =>
+      aliases.includes(key),
+    );
+    return group ? group[0] : key;
+  };
+
+  const direct = !!(perms.menus && perms.menus[menuName]);
+  if (direct) return true;
+
+  const targetKey = normalizeMenuGroup(menuName);
+  return Object.entries(perms.menus || {}).some(
+    ([key, value]) => value === true && normalizeMenuGroup(key) === targetKey,
+  );
 };
 
 Admin.prototype.canPerformAction = async function (action) {
   const role = this.Role || (await this.getRole());
   if (role && role.name === "super-admin") return true;
   const perms = await this.getEffectivePermissions();
-  return !!(perms.actions && perms.actions[action]);
+
+  const actionAliases = {
+    updateConfiguration: [
+      "updateConfig",
+      "editConfig",
+      "systemConfig",
+      "manageSystemConfig",
+    ],
+    manageRoles: ["createRole", "editRole", "deleteRole", "manageUserRoles"],
+    assignLoan: ["assignLoans"],
+    reset_password: ["resetPassword"],
+  };
+
+  if (perms.actions && perms.actions[action]) return true;
+
+  const aliases = actionAliases[action] || [];
+  return aliases.some((alias) => !!(perms.actions && perms.actions[alias]));
 };
 
 Admin.prototype.hasDataAccess = async function (access) {
@@ -254,22 +332,88 @@ Admin.prototype.canAccessData = async function (dataType, accessLevel = null) {
   if (role && role.name === "super-admin") return true;
   const perms = await this.getEffectivePermissions();
   if (!perms.dataAccess) return false;
+  const normalizeKey = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
   if (accessLevel) {
-    return !!(
+    const direct = !!(
       perms.dataAccess[dataType] && perms.dataAccess[dataType][accessLevel]
     );
+    if (direct) return true;
+
+    const dottedKey = `${dataType}.${accessLevel}`;
+    if (perms.dataAccess[dottedKey] === true) return true;
+
+    const targetKey = normalizeKey(dottedKey);
+    return Object.entries(perms.dataAccess || {}).some(
+      ([key, value]) => value === true && normalizeKey(key) === targetKey,
+    );
   }
-  return !!perms.dataAccess[dataType];
+  if (perms.dataAccess[dataType] === true) return true;
+
+  const targetKey = normalizeKey(dataType);
+  return Object.entries(perms.dataAccess || {}).some(
+    ([key, value]) => value === true && normalizeKey(key) === targetKey,
+  );
 };
 
 Admin.prototype.canAccessSubMenu = async function (menuName, subMenuName) {
   const role = this.Role || (await this.getRole());
   if (role && role.name === "super-admin") return true;
   const perms = await this.getEffectivePermissions();
-  return !!(
+  const normalizeKey = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  const menuAliasGroups = {
+    user: ["user", "usermanagement"],
+    order: ["order", "loanmanagement"],
+    precollection: ["precollection"],
+    collection: ["collection"],
+    creditreview: ["creditreview"],
+    fundmanagement: ["fundmanagement"],
+    appconfiguration: ["appconfiguration", "systemconfig", "config"],
+    datastatistics: ["datastatistics", "dashboard", "analytics"],
+    system: ["system", "adminmanagement"],
+    contentmanagement: ["contentmanagement", "content"],
+    notificationmanagement: ["notificationmanagement", "notifications"],
+  };
+  const normalizeMenuGroup = (value) => {
+    const key = normalizeKey(value);
+    const group = Object.entries(menuAliasGroups).find(([, aliases]) =>
+      aliases.includes(key),
+    );
+    return group ? group[0] : key;
+  };
+
+  if (
     perms.subMenus &&
     perms.subMenus[menuName] &&
-    perms.subMenus[menuName][subMenuName]
+    perms.subMenus[menuName][subMenuName] === true
+  ) {
+    return true;
+  }
+
+  const hasMenuAccess = await this.canAccessMenu(menuName);
+  const directMenuSubMenus = perms.subMenus?.[menuName];
+  if (hasMenuAccess && !directMenuSubMenus) {
+    return true;
+  }
+
+  const targetMenu = normalizeMenuGroup(menuName);
+  const targetSubMenu = normalizeKey(subMenuName);
+  const subMenuEntries = Object.entries(perms.subMenus || {}).filter(
+    ([key]) => normalizeMenuGroup(key) === targetMenu,
   );
+  if (subMenuEntries.length === 0) return hasMenuAccess;
+
+  return subMenuEntries.some(([, subMenus]) => {
+    if (!subMenus) return hasMenuAccess;
+    return Object.entries(subMenus || {}).some(
+      ([key, value]) => value === true && normalizeKey(key) === targetSubMenu,
+    );
+  });
 };
 module.exports = Admin;

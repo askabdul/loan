@@ -7,19 +7,22 @@ const express = require("express");
 const { Op, fn, col, literal } = require("sequelize");
 const { sequelize } = require("../config/database");
 const { adminAuth } = require("../middleware/auth");
+const { requireMenuAccess, requireSubMenuAccess } = require("../middleware/roleAuth");
 const { Loan, User, Admin, Payment, AppUsageLog, Role } = require("../models");
 
 const router = express.Router();
 
 // All routes require admin authentication
 router.use(adminAuth);
+router.use(requireMenuAccess("collection"));
 
 // ── GET /cases ────────────────────────────────────────────────────────────────
 // Overdue case list with filtering by collectionStatus.
 // "completed" tab shows loans whose main status = completed (they were collected).
-router.get("/cases", async (req, res) => {
+router.get("/cases", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { status, officerId, page = 1, limit = 20, search } = req.query;
+    const adminRoleName = req.admin?.Role?.name || req.admin?.role?.name;
 
     // "completed" tab — these loans have been fully repaid
     const where =
@@ -45,8 +48,8 @@ router.get("/cases", async (req, res) => {
 
     // Officers see only their own cases
     if (
-      req.admin.role?.name === "collection-officer" ||
-      req.admin.role?.name === "precollection-officer"
+      adminRoleName === "collection-officer" ||
+      adminRoleName === "precollection-officer"
     ) {
       where.collectionOfficerId = req.admin.id;
     }
@@ -86,7 +89,7 @@ router.get("/cases", async (req, res) => {
 });
 
 // ── PATCH /cases/:id/assign ───────────────────────────────────────────────────
-router.patch("/cases/:id/assign", async (req, res) => {
+router.patch("/cases/:id/assign", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { officerId } = req.body;
     const loan = await Loan.findByPk(req.params.id);
@@ -107,7 +110,7 @@ router.patch("/cases/:id/assign", async (req, res) => {
 });
 
 // ── PATCH /cases/:id/status ───────────────────────────────────────────────────
-router.patch("/cases/:id/status", async (req, res) => {
+router.patch("/cases/:id/status", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { status } = req.body;
     const allowed = [
@@ -137,7 +140,7 @@ router.patch("/cases/:id/status", async (req, res) => {
 });
 
 // ── PATCH /cases/:id/reserve ──────────────────────────────────────────────────
-router.patch("/cases/:id/reserve", async (req, res) => {
+router.patch("/cases/:id/reserve", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -159,7 +162,7 @@ router.patch("/cases/:id/reserve", async (req, res) => {
 
 // ── GET /rank1 ────────────────────────────────────────────────────────────────
 // Amount collected by officers broken down by date
-router.get("/rank1", async (req, res) => {
+router.get("/rank1", requireSubMenuAccess("collection", "rank1"), async (req, res) => {
   try {
     const { startDate, endDate, groupBy = "day" } = req.query;
     const where = {};
@@ -197,7 +200,7 @@ router.get("/rank1", async (req, res) => {
 
 // ── GET /rank2 ────────────────────────────────────────────────────────────────
 // Officer performance percentage
-router.get("/rank2", async (req, res) => {
+router.get("/rank2", requireSubMenuAccess("collection", "rank2"), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const dateFilter = {};
@@ -271,7 +274,7 @@ router.get("/rank2", async (req, res) => {
 });
 
 // ── GET /credit-review/count ──────────────────────────────────────────────────
-router.get("/credit-review/count", async (req, res) => {
+router.get("/credit-review/count", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { startDate, endDate, officerId } = req.query;
     const dateFilter = {};
@@ -343,7 +346,7 @@ router.get("/credit-review/count", async (req, res) => {
 });
 
 // ── POST /app-usage/log ───────────────────────────────────────────────────────
-router.post("/app-usage/log", async (req, res) => {
+router.post("/app-usage/log", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const {
       adminId,
@@ -389,7 +392,7 @@ router.post("/app-usage/log", async (req, res) => {
 });
 
 // ── GET /app-usage ────────────────────────────────────────────────────────────
-router.get("/app-usage", async (req, res) => {
+router.get("/app-usage", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { startDate, endDate, officerId } = req.query;
     const where = {};
@@ -421,7 +424,7 @@ router.get("/app-usage", async (req, res) => {
 
 // ── PATCH /cases/:id/unassign ─────────────────────────────────────────────────
 // Remove officer assignment — case returns to pending-assignment queue
-router.patch("/cases/:id/unassign", async (req, res) => {
+router.patch("/cases/:id/unassign", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -445,7 +448,7 @@ router.patch("/cases/:id/unassign", async (req, res) => {
 // ── POST /bulk-assign ─────────────────────────────────────────────────────────
 // Distribute selected loans among multiple officers (equal split)
 // Body: { loanIds: string[], officerIds: string[], mode: 'equal' | 'weighted' }
-router.post("/bulk-assign", async (req, res) => {
+router.post("/bulk-assign", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { loanIds, officerIds, mode = "equal" } = req.body;
     if (!loanIds?.length || !officerIds?.length)
@@ -503,7 +506,7 @@ router.post("/bulk-assign", async (req, res) => {
 // ── POST /redistribute ────────────────────────────────────────────────────────
 // Take ALL cases from one officer and distribute to available officers
 // Body: { fromOfficerId: string, toOfficerIds: string[] }
-router.post("/redistribute", async (req, res) => {
+router.post("/redistribute", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
     const { fromOfficerId, toOfficerIds } = req.body;
     if (!fromOfficerId || !toOfficerIds?.length)
@@ -558,7 +561,7 @@ router.post("/redistribute", async (req, res) => {
 
 // ── GET /officers ─────────────────────────────────────────────────────────────
 // Returns active collection officers for assignment dropdowns
-router.get("/officers", async (req, res) => {
+router.get("/officers", requireSubMenuAccess("collection", "officers"), async (req, res) => {
   try {
     const Role = require("../models/auth/Role");
     const roles = await Role.findAll({
@@ -593,7 +596,7 @@ router.get("/officers", async (req, res) => {
 
 // ── GET /officer-performance ──────────────────────────────────────────────────
 // Aggregated performance per officer for Rank 2 — supports date range and type filter
-router.get("/officer-performance", async (req, res) => {
+router.get("/officer-performance", requireSubMenuAccess("collection", "officers"), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
@@ -717,7 +720,7 @@ router.get("/officer-performance", async (req, res) => {
 
 // ── GET /repayments ───────────────────────────────────────────────────────────
 // Completed payments on collection-assigned loans
-router.get("/repayments", async (req, res) => {
+router.get("/repayments", requireSubMenuAccess("collection", "paymentRecord"), async (req, res) => {
   try {
     const { page = 1, limit = 20, officerId, startDate, endDate } = req.query;
 

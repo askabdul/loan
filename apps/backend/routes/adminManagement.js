@@ -2,10 +2,11 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
-const { Admin, Role } = require("../models");
+const { Admin, Role, Loan } = require("../models");
 const { adminAuth } = require("../middleware/auth");
 const {
   requireMenuAccess,
+  requireSubMenuAccess,
   requireActionPermission,
 } = require("../middleware/roleAuth");
 
@@ -20,8 +21,61 @@ const adminInclude = [
   },
 ];
 
+const releaseOfficerAssignments = async (adminId) => {
+  await Promise.all([
+    Loan.update(
+      {
+        assignedOfficerId: null,
+        assignmentStatus: "unassigned",
+      },
+      {
+        where: {
+          assignedOfficerId: adminId,
+          assignmentStatus: { [Op.in]: ["assigned", "hung-up", "hung-down"] },
+        },
+      },
+    ),
+    Loan.update(
+      {
+        precollectionOfficerId: null,
+        precollectionStatus: "pending-assignment",
+        reservedAt: null,
+        reservedByOfficerId: null,
+      },
+      {
+        where: {
+          precollectionOfficerId: adminId,
+          precollectionStatus: {
+            [Op.in]: ["assigned", "processed", "hung-up", "hung-down"],
+          },
+        },
+      },
+    ),
+    Loan.update(
+      {
+        collectionOfficerId: null,
+        collectionStatus: "pending-assignment",
+        reservedAt: null,
+        reservedByOfficerId: null,
+      },
+      {
+        where: {
+          collectionOfficerId: adminId,
+          collectionStatus: {
+            [Op.in]: ["assigned", "processed", "hung-up", "hung-down"],
+          },
+        },
+      },
+    ),
+  ]);
+};
+
 // GET /api/admin-management/admins
-router.get("/admins", requireMenuAccess("userManagement"), async (req, res) => {
+router.get(
+  "/admins",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
+  async (req, res) => {
   try {
     const { page = 1, limit = 10, search, role, status } = req.query;
     const where = {};
@@ -58,7 +112,8 @@ router.get("/admins", requireMenuAccess("userManagement"), async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
-});
+  },
+);
 
 // POST /api/admin-management/admins
 router.post(
@@ -69,8 +124,11 @@ router.post(
     body("lastName").notEmpty(),
     body("email").isEmail(),
     body("phoneNumber").notEmpty(),
-    body("password").isLength({ min: 6 }),
+    body("password")
+      .isLength({ min: 8 })
+      .withMessage("Password must be at least 8 characters"),
     body("role").notEmpty(),
+    body("customPermissions").optional().isObject(),
   ],
   async (req, res) => {
     try {
@@ -85,6 +143,7 @@ router.post(
         phoneNumber,
         password,
         role,
+        customPermissions,
         isActive = true,
       } = req.body;
 
@@ -122,6 +181,7 @@ router.post(
         password,
         username,
         roleId: role,
+        customPermissions: customPermissions || {},
         isActive,
         createdById: req.admin.id,
       });
@@ -140,7 +200,8 @@ router.post(
 // GET /api/admin-management/admins/:id
 router.get(
   "/admins/:id",
-  requireMenuAccess("userManagement"),
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   async (req, res) => {
     try {
       const admin = await Admin.findByPk(req.params.id, {
@@ -171,6 +232,7 @@ router.put(
       .matches(/^\d{6}$/),
     body("dateJoined").optional().isISO8601(),
     body("dateOfExpiry").optional().isISO8601(),
+    body("customPermissions").optional().isObject(),
   ],
   async (req, res) => {
     try {
@@ -178,7 +240,9 @@ router.put(
       if (!errors.isEmpty())
         return res.status(400).json({ success: false, errors: errors.array() });
 
-      const admin = await Admin.findByPk(req.params.id);
+      const admin = await Admin.findByPk(req.params.id, {
+        include: [{ model: Role, as: "Role", attributes: ["name"] }],
+      });
       if (!admin)
         return res
           .status(404)
@@ -195,6 +259,7 @@ router.put(
         employeeNumber,
         dateJoined,
         dateOfExpiry,
+        customPermissions,
       } = req.body;
 
       if (email && email !== admin.email) {
@@ -231,10 +296,20 @@ router.put(
       if (dateJoined) updates.dateJoined = new Date(dateJoined);
       if (dateOfExpiry) updates.dateOfExpiry = new Date(dateOfExpiry);
       if (role) updates.roleId = role;
+      if (customPermissions !== undefined)
+        updates.customPermissions = customPermissions;
       if (typeof isActive === "boolean") updates.isActive = isActive;
       updates.updatedById = req.admin.id;
 
+      const willDeactivate =
+        typeof isActive === "boolean" && isActive === false && admin.isActive;
+
       await admin.update(updates);
+
+      if (willDeactivate) {
+        await releaseOfficerAssignments(admin.id);
+      }
+
       const full = await Admin.findByPk(admin.id, { include: adminInclude });
       res.json({
         success: true,
@@ -268,8 +343,12 @@ router.put(
 
       const isOwnPassword = req.admin.id === req.params.id;
       if (!isOwnPassword) {
+        const effectivePermissions = req.admin.getEffectivePermissions
+          ? await req.admin.getEffectivePermissions()
+          : {};
         const hasPermission =
-          req.admin.getEffectivePermissions?.()?.actions?.reset_password;
+          effectivePermissions.actions?.reset_password ||
+          effectivePermissions.actions?.resetPassword;
         if (!hasPermission)
           return res.status(403).json({
             success: false,
@@ -300,7 +379,9 @@ router.delete(
   requireActionPermission("deleteAdmin"),
   async (req, res) => {
     try {
-      const admin = await Admin.findByPk(req.params.id);
+      const admin = await Admin.findByPk(req.params.id, {
+        include: [{ model: Role, as: "Role", attributes: ["name"] }],
+      });
       if (!admin)
         return res
           .status(404)
@@ -311,7 +392,8 @@ router.delete(
           message: "You cannot delete your own account",
         });
       await admin.update({ isActive: false });
-      res.json({ success: true, message: "Admin deleted successfully" });
+      await releaseOfficerAssignments(admin.id);
+      res.json({ success: true, message: "Admin deactivated successfully" });
     } catch (err) {
       res.status(500).json({ success: false, message: err.message });
     }
@@ -319,7 +401,11 @@ router.delete(
 );
 
 // GET /api/admin-management/roles
-router.get("/roles", requireMenuAccess("userManagement"), async (req, res) => {
+router.get(
+  "/roles",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "roleManagement"),
+  async (req, res) => {
   try {
     const { page = 1, limit = 10, search, status } = req.query;
     const where = {};
@@ -348,12 +434,14 @@ router.get("/roles", requireMenuAccess("userManagement"), async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
-});
+  },
+);
 
 // GET /api/admin-management/roles/stats
 router.get(
   "/roles/stats",
-  requireMenuAccess("userManagement"),
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "roleManagement"),
   async (req, res) => {
     try {
       const [total, active, inactive] = await Promise.all([
@@ -371,7 +459,8 @@ router.get(
 // GET /api/admin-management/roles/:id
 router.get(
   "/roles/:id",
-  requireMenuAccess("userManagement"),
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "roleManagement"),
   async (req, res) => {
     try {
       const role = await Role.findByPk(req.params.id);

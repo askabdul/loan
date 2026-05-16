@@ -72,7 +72,11 @@ const loadFromStorage = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.tabs)) return parsed;
+      if (Array.isArray(parsed.tabs)) {
+        const tabs = parsed.tabs.filter((tab) => tab?.id !== "/");
+        const activeTab = parsed.activeTab === "/" ? null : parsed.activeTab;
+        return { tabs, activeTab };
+      }
     }
   } catch (_) {}
   return { tabs: [], activeTab: null };
@@ -216,16 +220,10 @@ export const TabProvider = ({ children }) => {
     [tabs, navigate],
   );
 
-  // Initialize home tab if no tabs exist
-  React.useEffect(() => {
-    if (tabs.length === 0) {
-      addTab("/", "Dashboard");
-    }
-  }, [tabs.length, addTab]);
-
   // Update active tab when location changes
   React.useEffect(() => {
     const currentPath = location.pathname;
+    if (currentPath === "/") return;
     addTab(currentPath);
   }, [location.pathname, addTab]);
 

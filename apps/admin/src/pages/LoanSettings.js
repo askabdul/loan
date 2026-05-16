@@ -122,7 +122,9 @@ const LoanSettings = () => {
     try {
       setLoading(true);
       const response = await apiService.getConfiguration();
-      const configData = response.data || [];
+      const configData = Array.isArray(response.data)
+        ? response.data
+        : Object.entries(response.config || {}).map(([key, value]) => ({ key, value }));
       
       // Transform config array to settings object
       const loanSettings = {

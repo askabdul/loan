@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUpload, FiCalendar, FiRefreshCw, FiUser, FiCreditCard } from 'react-icons/fi';
 
+const API_BASE_URL = (process.env.REACT_APP_API_URL || 'http://localhost:8001/api').replace(/\/$/, '');
+
 const LoanExtension = () => {
   const [searchData, setSearchData] = useState({
     userId: '',
@@ -41,7 +43,7 @@ const LoanExtension = () => {
   const fetchRecentExtensions = async () => {
     try {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/loan-extension/admin/recent`, {
+      const response = await fetch(`${API_BASE_URL}/loan-extension/admin/recent`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -111,7 +113,7 @@ const LoanExtension = () => {
     try {
       const token = localStorage.getItem('adminToken');
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/loan-extension/search?userId=${searchData.userId}&loanId=${searchData.loanId}`,
+        `${API_BASE_URL}/loan-extension/search?userId=${searchData.userId}&loanId=${searchData.loanId}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -145,7 +147,7 @@ const LoanExtension = () => {
     try {
       const token = localStorage.getItem('adminToken');
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/loan-extension/calculate-fee`,
+        `${API_BASE_URL}/loan-extension/calculate-fee`,
         {
           method: 'POST',
           headers: {
@@ -194,7 +196,7 @@ const LoanExtension = () => {
       formData.append('popFile', extensionData.popFile);
 
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/loan-extension/admin-extend`,
+        `${API_BASE_URL}/loan-extension/admin-extend`,
         {
           method: 'POST',
           headers: {

@@ -382,14 +382,6 @@ const Sidebar = () => {
     //   menuKey: "overtimeMessage",
     // },
     {
-      id: "config",
-      title: "Config",
-      icon: <FiSettings />,
-      path: "/config",
-      hasSubmenu: false,
-      menuKey: "config",
-    },
-    {
       id: "app-config",
       title: "App Configuration",
       icon: <FiSettings />,
@@ -466,6 +458,25 @@ const Sidebar = () => {
     },
   ];
 
+  const canSeeSubMenuItem = (item, subItem) => {
+    if (subItem.requiresSuperAdmin && !isSuperAdmin()) {
+      return false;
+    }
+    return (
+      !subItem.subMenuKey || hasSubMenuAccess(item.menuKey, subItem.subMenuKey)
+    );
+  };
+
+  const canSeeMenuItem = (item) => {
+    if (item.menuKey && !hasMenuAccess(item.menuKey)) {
+      return false;
+    }
+    if (!item.hasSubmenu || !Array.isArray(item.submenu)) {
+      return true;
+    }
+    return item.submenu.some((subItem) => canSeeSubMenuItem(item, subItem));
+  };
+
   return (
     <div className="sidebar bg-cedi-dark text-white w-64 min-h-screen shadow-lg">
       <div className="sidebar-header px-4 py-4 border-b border-white/10">
@@ -478,7 +489,7 @@ const Sidebar = () => {
       <nav className="sidebar-nav">
         <ul className="nav-list">
           {menuItems
-            .filter((item) => !item.menuKey || hasMenuAccess(item.menuKey))
+            .filter((item) => canSeeMenuItem(item))
             .map((item) => (
               <li key={item.id} className="nav-item">
                 {item.hasSubmenu ? (
@@ -502,17 +513,7 @@ const Sidebar = () => {
                     {expandedItems[item.id] && (
                       <ul className="submenu">
                         {item.submenu
-                          .filter((subItem) => {
-                            // Check if submenu item requires super admin access
-                            if (subItem.requiresSuperAdmin && !isSuperAdmin()) {
-                              return false;
-                            }
-                            // Standard permission check
-                            return (
-                              !subItem.subMenuKey ||
-                              hasSubMenuAccess(item.menuKey, subItem.subMenuKey)
-                            );
-                          })
+                          .filter((subItem) => canSeeSubMenuItem(item, subItem))
                           .map((subItem, index) => (
                             <li key={index} className="submenu-item">
                               <NavLink

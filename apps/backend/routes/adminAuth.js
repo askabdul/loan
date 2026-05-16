@@ -212,7 +212,7 @@ router.post(
 router.get("/me", adminAuth, async (req, res) => {
   const admin = req.admin;
   const permissions = admin.getEffectivePermissions
-    ? admin.getEffectivePermissions()
+    ? await admin.getEffectivePermissions()
     : {};
   res.json({
     success: true,

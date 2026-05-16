@@ -11,7 +11,7 @@ const defaultContent = [
     type: 'faq',
     title: 'How do I apply for a loan?',
     content: 'Download the CEDI Loan app, register your account, complete your profile and apply for a loan. The process takes only a few minutes.',
-    order: 1,
+    sortOrder: 1,
     isActive: true,
   },
   {
@@ -19,7 +19,7 @@ const defaultContent = [
     type: 'faq',
     title: 'What are the loan requirements?',
     content: 'You must be 18+ years old, have a valid Ghana national ID, and a registered mobile money wallet.',
-    order: 2,
+    sortOrder: 2,
     isActive: true,
   },
   {
@@ -27,7 +27,7 @@ const defaultContent = [
     type: 'faq',
     title: 'How long does approval take?',
     content: 'Loan applications are typically reviewed within 24 hours. Approved borrowers at higher levels may receive instant approval.',
-    order: 3,
+    sortOrder: 3,
     isActive: true,
   },
   {
@@ -35,7 +35,7 @@ const defaultContent = [
     type: 'faq',
     title: 'How do I repay my loan?',
     content: 'Repayments are made via mobile money (MTN MoMo or AirtelTigo Money) directly through the app.',
-    order: 4,
+    sortOrder: 4,
     isActive: true,
   },
   {
@@ -43,7 +43,7 @@ const defaultContent = [
     type: 'process_guide',
     title: 'Step 1: Register',
     content: 'Create your CEDI Loan account with your phone number and valid national ID.',
-    order: 1,
+    sortOrder: 1,
     isActive: true,
   },
   {
@@ -51,7 +51,7 @@ const defaultContent = [
     type: 'process_guide',
     title: 'Step 2: Complete Profile',
     content: 'Fill in your personal, employment and financial information to increase your credit limit.',
-    order: 2,
+    sortOrder: 2,
     isActive: true,
   },
   {
@@ -59,7 +59,7 @@ const defaultContent = [
     type: 'process_guide',
     title: 'Step 3: Apply',
     content: 'Select your desired loan amount and repayment term, then submit your application.',
-    order: 3,
+    sortOrder: 3,
     isActive: true,
   },
   {
@@ -67,7 +67,7 @@ const defaultContent = [
     type: 'process_guide',
     title: 'Step 4: Receive Funds',
     content: 'Once approved, funds are disbursed directly to your mobile money wallet.',
-    order: 4,
+    sortOrder: 4,
     isActive: true,
   },
   {
@@ -81,7 +81,7 @@ const defaultContent = [
       address: 'Accra, Ghana',
       hours: 'Monday - Friday, 8:00 AM - 5:00 PM',
     },
-    order: 1,
+    sortOrder: 1,
     isActive: true,
   },
 ];

@@ -53,8 +53,8 @@ const EMPTY_FORM = {
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-[250px] z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl flex flex-col max-h-[90vh]">
+    <div className="fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-2xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">{title}</h3>
           <button
@@ -144,8 +144,8 @@ const OfficerManagement = () => {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       errs.email = "Invalid email";
     if (!form.phoneNumber.trim()) errs.phoneNumber = "Required";
-    if (!form.password || form.password.length < 6)
-      errs.password = "Min 6 characters";
+    if (!form.password || form.password.length < 8)
+      errs.password = "Min 8 characters";
     if (!form.role) errs.role = "Select a role";
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
@@ -175,7 +175,13 @@ const OfficerManagement = () => {
         setFormErrors({});
         fetchOfficers();
       } else {
-        toast.error(data.message || "Failed to create officer");
+        const firstValidationError =
+          Array.isArray(data?.errors) && data.errors.length > 0
+            ? data.errors[0]?.msg
+            : null;
+        toast.error(
+          firstValidationError || data.message || "Failed to create officer",
+        );
       }
     } catch {
       toast.error("Network error creating officer");
@@ -374,9 +380,10 @@ const OfficerManagement = () => {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, [field]: e.target.value }))
                   }
+                  minLength={field === "password" ? 8 : undefined}
                   className={`${inp} ${formErrors[field] ? "border-red-300 ring-1 ring-red-300" : ""}`}
                   placeholder={
-                    field === "password" ? "Min 6 characters" : label
+                    field === "password" ? "Min 8 characters" : label
                   }
                 />
                 {formErrors[field] && (
