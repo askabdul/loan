@@ -202,8 +202,8 @@ export const usersAPI = {
   },
 
   updateProfile: async (profileData) => {
-    const response = await fetch(`${API_BASE_URL}/users/me`, {
-      method: "PATCH",
+    const response = await fetch(`${API_BASE_URL}/users/personal-info`, {
+      method: "PUT",
       headers: createHeaders(),
       body: JSON.stringify(profileData),
     });
@@ -425,7 +425,7 @@ export const paymentsAPI = {
   },
 
   getPaymentStats: async () => {
-    const response = await fetch(`${API_BASE_URL}/payments/stats`, {
+    const response = await fetch(`${API_BASE_URL}/payments/stats/summary`, {
       method: "GET",
       headers: createHeaders(),
     });

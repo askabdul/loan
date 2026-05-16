@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "react-toastify";
 
 const RAW_API_URL =
   process.env.REACT_APP_API_URL || "http://localhost:8001/api";
@@ -39,6 +40,17 @@ api.interceptors.response.use(
       // Handle unauthorized access — dispatch event instead of hard reload
       localStorage.removeItem("adminToken");
       window.dispatchEvent(new CustomEvent("admin:unauthorized"));
+    }
+    if (error.response?.status === 403) {
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error?.message ||
+        "You do not have permission to perform this action.";
+      const url = error?.config?.url || "unknown";
+      const toastId = `forbidden:${url}:${serverMessage}`;
+      if (!toast.isActive(toastId)) {
+        toast.error(serverMessage, { toastId });
+      }
     }
     return Promise.reject(error);
   },
@@ -438,7 +450,16 @@ class ApiService {
   async getConfiguration() {
     try {
       const response = await api.get("/config-new/admin/all");
-      return response.data;
+      const payload = response.data || {};
+      return {
+        ...payload,
+        config: Array.isArray(payload.data)
+          ? payload.data.reduce((acc, item) => {
+              acc[item.key] = item.value;
+              return acc;
+            }, {})
+          : payload.data || {},
+      };
     } catch (error) {
       console.error("Error fetching config:", error);
       throw error;
@@ -447,7 +468,30 @@ class ApiService {
 
   async updateConfiguration(config) {
     try {
-      const response = await api.put("/admin/config", config);
+      const flatten = (obj, prefix = "") => {
+        const out = [];
+        Object.entries(obj || {}).forEach(([key, value]) => {
+          const fullKey = prefix ? `${prefix}${key}` : key;
+          if (
+            value &&
+            typeof value === "object" &&
+            !Array.isArray(value)
+          ) {
+            out.push(...flatten(value, `${fullKey}.`));
+          } else {
+            out.push({ key: fullKey, value });
+          }
+        });
+        return out;
+      };
+
+      const configs = Array.isArray(config)
+        ? config
+        : flatten(config).filter((item) => item.value !== undefined);
+
+      const response = await api.put("/config-new/admin/bulk-update", {
+        configs,
+      });
       return response.data;
     } catch (error) {
       console.error("Error updating config:", error);
@@ -457,7 +501,7 @@ class ApiService {
 
   async getConfig() {
     try {
-      const response = await api.get("/admin/config");
+      const response = await api.get("/config-new/admin/all");
       return response.data;
     } catch (error) {
       console.error("Error fetching config:", error);
@@ -467,7 +511,7 @@ class ApiService {
 
   async updateConfig(key, value) {
     try {
-      const response = await api.put(`/admin/config/${key}`, { value });
+      const response = await api.put(`/config-new/${key}`, { value });
       return response.data;
     } catch (error) {
       console.error("Error updating config:", error);

@@ -25,14 +25,20 @@ export const AuthProvider = ({ children }) => {
     
     if (storedToken && storedUser) {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        setUser(null);
+      }
       if (storedPermissions) {
-        setPermissions(JSON.parse(storedPermissions));
+        try {
+          setPermissions(JSON.parse(storedPermissions));
+        } catch {
+          setPermissions(null);
+        }
       }
-      // Fetch fresh permissions if we have a token but no stored permissions
-      if (!storedPermissions) {
-        fetchPermissions(storedToken);
-      }
+      // Always fetch fresh permissions so role updates reflect after refresh
+      fetchPermissions();
     }
     
     setLoading(false);
@@ -42,14 +48,55 @@ export const AuthProvider = ({ children }) => {
     try {
       const resp = await apiService.getAdminPermissions();
       const perms = resp?.data?.permissions || resp?.data?.data?.permissions;
+      const roleName = resp?.data?.role || resp?.data?.data?.role;
       if (perms) {
         setPermissions(perms);
         localStorage.setItem('adminPermissions', JSON.stringify(perms));
+      }
+      if (roleName) {
+        setUser((prevUser) => {
+          if (!prevUser) return prevUser;
+          const nextUser = {
+            ...prevUser,
+            role:
+              prevUser?.role && typeof prevUser.role === 'object'
+                ? { ...prevUser.role, name: roleName }
+                : { name: roleName },
+            Role:
+              prevUser?.Role && typeof prevUser.Role === 'object'
+                ? { ...prevUser.Role, name: roleName }
+                : { name: roleName },
+          };
+          localStorage.setItem('adminUser', JSON.stringify(nextUser));
+          return nextUser;
+        });
       }
     } catch (error) {
       console.error('Error fetching permissions:', error);
     }
   };
+
+  useEffect(() => {
+    if (!token || !user) return;
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPermissions();
+      }
+    };
+
+    const handleFocusRefresh = () => fetchPermissions();
+    const intervalId = setInterval(() => fetchPermissions(), 60000);
+
+    window.addEventListener('focus', handleFocusRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocusRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
+  }, [token, user]);
 
   const login = async (emailOrUsername, password) => {
     try {
@@ -70,7 +117,16 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Login error:', error);
-      const message = error?.response?.data?.message || error.message;
+      const firstValidationError =
+        Array.isArray(error?.response?.data?.errors) &&
+        error.response.data.errors.length > 0
+          ? error.response.data.errors[0]?.msg
+          : null;
+      const message =
+        firstValidationError ||
+        error?.response?.data?.message ||
+        error.message ||
+        'Login failed';
       return { success: false, message };
     }
   };
@@ -93,25 +149,81 @@ export const AuthProvider = ({ children }) => {
     return user?.role?.name === 'super-admin';
   };
 
+  const normalizeKey = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+  const menuAliasGroups = {
+    user: ["user", "usermanagement", "usermanagement"],
+    order: ["order", "loanmanagement"],
+    precollection: ["precollection"],
+    collection: ["collection"],
+    creditreview: ["creditreview"],
+    fundmanagement: ["fundmanagement"],
+    appconfiguration: ["appconfiguration", "systemconfig", "config"],
+    datastatistics: ["datastatistics", "dashboard", "analytics"],
+    system: ["system", "adminmanagement"],
+    contentmanagement: ["contentmanagement", "content"],
+    notificationmanagement: ["notificationmanagement", "notifications"],
+  };
+
+  const normalizeMenuGroup = (value) => {
+    const key = normalizeKey(value);
+    const group = Object.entries(menuAliasGroups).find(([, aliases]) =>
+      aliases.includes(key),
+    );
+    return group ? group[0] : key;
+  };
+
   // Helper function to check menu permissions
   const hasMenuAccess = (menuName) => {
     if (isSuperAdmin()) return true; // Super Admin bypass
     if (!permissions) return false;
-    return permissions.menus?.[menuName] === true;
+    if (permissions.menus?.[menuName] === true) return true;
+
+    const target = normalizeMenuGroup(menuName);
+    return Object.entries(permissions.menus || {}).some(
+      ([key, value]) => value === true && normalizeMenuGroup(key) === target,
+    );
   };
 
   // Helper function to check sub-menu permissions
   const hasSubMenuAccess = (menuName, subMenuName) => {
     if (isSuperAdmin()) return true; // Super Admin bypass
     if (!permissions) return false;
-    return permissions.subMenus?.[menuName]?.[subMenuName] === true;
+    if (permissions.subMenus?.[menuName]?.[subMenuName] === true) return true;
+
+    const directMenuSubMenus = permissions.subMenus?.[menuName];
+    if (hasMenuAccess(menuName) && !directMenuSubMenus) {
+      return true;
+    }
+
+    const targetMenu = normalizeMenuGroup(menuName);
+    const targetSub = normalizeKey(subMenuName);
+    const matchedMenus = Object.entries(permissions.subMenus || {}).filter(
+      ([key]) => normalizeMenuGroup(key) === targetMenu,
+    );
+    if (matchedMenus.length === 0) return hasMenuAccess(menuName);
+
+    return matchedMenus.some(([, subMenus]) => {
+      if (!subMenus) return hasMenuAccess(menuName);
+      return Object.entries(subMenus || {}).some(
+        ([key, value]) => value === true && normalizeKey(key) === targetSub,
+      );
+    });
   };
 
   // Helper function to check action permissions
   const hasActionPermission = (actionName) => {
     if (isSuperAdmin()) return true; // Super Admin bypass
     if (!permissions) return false;
-    return permissions.actions?.[actionName] === true;
+    if (permissions.actions?.[actionName] === true) return true;
+
+    const target = normalizeKey(actionName);
+    return Object.entries(permissions.actions || {}).some(
+      ([key, value]) => value === true && normalizeKey(key) === target,
+    );
   };
 
   // Helper function to check data access permissions

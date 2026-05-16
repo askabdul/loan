@@ -6,7 +6,7 @@
  */
 require('dotenv').config();
 const connectDB = require('../config/database');
-const { Role, Admin, LoanLevel, AppConfig, Content } = require('../models');
+const { Role, Admin, LoanLevel, LoanTerm, AppConfig, Content } = require('../models');
 
 // ── Role data (inline — mirrors seedRoles.js) ─────────────────────────────────
 const defaultRoles = [
@@ -44,6 +44,87 @@ const defaultConfigs = [
   { key: 'lockout_duration',   value: 30,                            category: 'security',  isPublic: false },
 ];
 
+const defaultContent = [
+  {
+    key: 'faq_1',
+    type: 'faq',
+    title: 'How do I apply for a loan?',
+    content: 'Download the CEDI Loan app, register your account, complete your profile and apply for a loan. The process takes only a few minutes.',
+    sortOrder: 1,
+    isActive: true,
+  },
+  {
+    key: 'faq_2',
+    type: 'faq',
+    title: 'What are the loan requirements?',
+    content: 'You must be 18+ years old, have a valid Ghana national ID, and a registered mobile money wallet.',
+    sortOrder: 2,
+    isActive: true,
+  },
+  {
+    key: 'faq_3',
+    type: 'faq',
+    title: 'How long does approval take?',
+    content: 'Loan applications are typically reviewed within 24 hours. Approved borrowers at higher levels may receive instant approval.',
+    sortOrder: 3,
+    isActive: true,
+  },
+  {
+    key: 'faq_4',
+    type: 'faq',
+    title: 'How do I repay my loan?',
+    content: 'Repayments are made via mobile money (MTN MoMo or AirtelTigo Money) directly through the app.',
+    sortOrder: 4,
+    isActive: true,
+  },
+  {
+    key: 'process_guide_1',
+    type: 'process_guide',
+    title: 'Step 1: Register',
+    content: 'Create your CEDI Loan account with your phone number and valid national ID.',
+    sortOrder: 1,
+    isActive: true,
+  },
+  {
+    key: 'process_guide_2',
+    type: 'process_guide',
+    title: 'Step 2: Complete Profile',
+    content: 'Fill in your personal, employment and financial information to increase your credit limit.',
+    sortOrder: 2,
+    isActive: true,
+  },
+  {
+    key: 'process_guide_3',
+    type: 'process_guide',
+    title: 'Step 3: Apply',
+    content: 'Select your desired loan amount and repayment term, then submit your application.',
+    sortOrder: 3,
+    isActive: true,
+  },
+  {
+    key: 'process_guide_4',
+    type: 'process_guide',
+    title: 'Step 4: Receive Funds',
+    content: 'Once approved, funds are disbursed directly to your mobile money wallet.',
+    sortOrder: 4,
+    isActive: true,
+  },
+  {
+    key: 'contact_info',
+    type: 'contact_info',
+    title: 'Contact Information',
+    content: {
+      phone: '+233000000000',
+      email: 'support@cedi.com',
+      whatsapp: '+233000000000',
+      address: 'Accra, Ghana',
+      hours: 'Monday - Friday, 8:00 AM - 5:00 PM',
+    },
+    sortOrder: 1,
+    isActive: true,
+  },
+];
+
 async function run() {
   console.log('🌱 Starting full database seed...\n');
   await connectDB();
@@ -51,7 +132,10 @@ async function run() {
   // 1. Roles
   console.log('--- Seeding roles ---');
   for (const r of defaultRoles) {
-    await Role.upsert(r);
+    await Role.upsert({
+      ...r,
+      description: r.description || `${r.displayName} role`,
+    });
     console.log(`  ✔ ${r.displayName}`);
   }
 
@@ -64,7 +148,7 @@ async function run() {
       firstName: 'Super', lastName: 'Administrator', username: 'superadmin',
       email: 'superadmin@cedi.com', phoneNumber: '+233000000000',
       password: 'SuperAdmin123!', roleId: superRole.id,
-      isActive: true, emailVerified: true, phoneVerified: true,
+      isActive: true, isEmailVerified: true,
     },
   });
   console.log('  ✔ superadmin@cedi.com');
@@ -81,6 +165,18 @@ async function run() {
   for (const c of defaultConfigs) {
     await AppConfig.upsert({ ...c, isActive: true });
     console.log(`  ✔ ${c.key}`);
+  }
+
+  // 5. Loan terms
+  console.log('\n--- Seeding loan terms ---');
+  await LoanTerm.createDefaultTerms();
+  console.log('  ✔ default loan terms');
+
+  // 6. Content
+  console.log('\n--- Seeding content ---');
+  for (const item of defaultContent) {
+    await Content.upsert({ ...item, metadata: {} });
+    console.log(`  ✔ ${item.key}`);
   }
 
   console.log('\n✅ All seeds complete!');

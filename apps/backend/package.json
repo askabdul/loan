@@ -11,6 +11,7 @@
     "db:seed:admin": "node scripts/seedSuperAdmin.js",
     "db:seed:levels": "node scripts/seedLoanLevels.js",
     "db:seed:configs": "node scripts/seedAllConfigs.js",
+    "contracts:check": "node scripts/validateFrontendEndpoints.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

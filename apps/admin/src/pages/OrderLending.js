@@ -329,12 +329,12 @@ const OrderLending = () => {
       {/* Disburse remark dialog */}
       {remarkDialog && (
         <div
-          className="fixed top-0 left-[250px] right-0 bottom-0 z-[1200] flex items-center justify-center p-4"
+          className="fixed top-0 left-0 md:left-64 right-0 bottom-0 z-[1200] flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
           onClick={() => setRemarkDialog(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-xl p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-bold text-gray-800 mb-1">

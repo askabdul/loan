@@ -16,11 +16,23 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 92vw;
   max-width: 500px;
-  width: 90%;
   max-height: 90vh;
   overflow-y: auto;
   animation: modalSlideIn 0.3s ease-out;
+}
+
+@media (min-width: 768px) {
+  .id-card-modal {
+    width: 60vw;
+  }
+}
+
+@media (min-width: 1200px) {
+  .id-card-modal {
+    width: 50vw;
+  }
 }
 
 @keyframes modalSlideIn {

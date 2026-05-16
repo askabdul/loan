@@ -6,10 +6,28 @@ const { hasPermission } = require('../middleware/permissions');
 
 const router = express.Router();
 
-const termInclude = [
-  { model: Admin, as: 'CreatedBy', attributes: ['id', 'email', 'firstName', 'lastName'], required: false },
-  { model: Admin, as: 'LastUpdatedBy', attributes: ['id', 'email', 'firstName', 'lastName'], required: false },
-];
+const canIncludeAuditRelations =
+  !!LoanTerm.associations?.CreatedBy && !!LoanTerm.associations?.LastUpdatedBy;
+
+const termInclude = canIncludeAuditRelations
+  ? [
+      {
+        model: Admin,
+        as: 'CreatedBy',
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false,
+      },
+      {
+        model: Admin,
+        as: 'LastUpdatedBy',
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false,
+      },
+    ]
+  : [];
+
+const hasLoanTermField = (fieldName) =>
+  Object.prototype.hasOwnProperty.call(LoanTerm.rawAttributes || {}, fieldName);
 
 // GET /api/loan-terms (public)
 router.get('/', async (req, res) => {
@@ -80,7 +98,10 @@ router.get('/:id', adminAuth, async (req, res) => {
 // POST /api/loan-terms (admin)
 router.post('/', adminAuth, hasPermission('manageLoanTerms'), async (req, res) => {
   try {
-    const term = await LoanTerm.create({ ...req.body, createdById: req.admin.id, lastUpdatedById: req.admin.id });
+    const payload = { ...req.body };
+    if (hasLoanTermField('createdById')) payload.createdById = req.admin.id;
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    const term = await LoanTerm.create(payload);
     res.status(201).json({ success: true, message: 'Loan term created successfully', data: term });
   } catch (err) {
     if (err.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ success: false, message: 'Loan term with this ID already exists' });
@@ -94,7 +115,9 @@ router.put('/:id', adminAuth, hasPermission('manageLoanTerms'), async (req, res)
   try {
     const term = await LoanTerm.findByPk(req.params.id);
     if (!term) return res.status(404).json({ success: false, message: 'Loan term not found' });
-    await term.update({ ...req.body, lastUpdatedById: req.admin.id });
+    const payload = { ...req.body };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    await term.update(payload);
     const full = await LoanTerm.findByPk(term.id, { include: termInclude });
     res.json({ success: true, message: 'Loan term updated successfully', data: full });
   } catch (err) {
@@ -108,7 +131,9 @@ router.patch('/:id', adminAuth, hasPermission('manageLoanTerms'), async (req, re
   try {
     const term = await LoanTerm.findByPk(req.params.id);
     if (!term) return res.status(404).json({ success: false, message: 'Loan term not found' });
-    await term.update({ ...req.body, lastUpdatedById: req.admin.id });
+    const payload = { ...req.body };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    await term.update(payload);
     const full = await LoanTerm.findByPk(term.id, { include: termInclude });
     res.json({ success: true, message: 'Loan term updated successfully', data: full });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to update loan term' }); }
@@ -119,7 +144,9 @@ router.patch('/:id/toggle', adminAuth, hasPermission('manageLoanTerms'), async (
   try {
     const term = await LoanTerm.findByPk(req.params.id);
     if (!term) return res.status(404).json({ success: false, message: 'Loan term not found' });
-    await term.update({ enabled: !term.enabled, lastUpdatedById: req.admin.id });
+    const payload = { enabled: !term.enabled };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    await term.update(payload);
     res.json({ success: true, message: `Loan term ${term.enabled ? 'enabled' : 'disabled'} successfully`, data: { id: term.id, enabled: term.enabled } });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to toggle loan term status' }); }
 });
@@ -140,7 +167,9 @@ router.patch('/:id/users', adminAuth, hasPermission('manageLoanTerms'), async (r
       specificUsers = specificUsers.filter(uid => !userIds.includes(uid));
     }
 
-    await term.update({ specificUsers, lastUpdatedById: req.admin.id });
+    const payload = { specificUsers };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    await term.update(payload);
     res.json({ success: true, message: `Users ${action === 'add' ? 'assigned to' : 'removed from'} loan term successfully`, data: term });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to assign users to loan term' }); }
 });
@@ -161,7 +190,9 @@ router.patch('/:id/levels', adminAuth, hasPermission('manageLoanTerms'), async (
     else if (action === 'add') levelRestrictions = [...new Set([...levelRestrictions, ...levels])];
     else if (action === 'remove') levelRestrictions = levelRestrictions.filter(l => !levels.includes(l));
 
-    await term.update({ levelRestrictions, lastUpdatedById: req.admin.id });
+    const payload = { levelRestrictions };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    await term.update(payload);
     res.json({ success: true, message: 'Level restrictions updated successfully', data: { id: term.id, levelRestrictions: term.levelRestrictions } });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to update level restrictions' }); }
 });
@@ -171,7 +202,9 @@ router.delete('/:id', adminAuth, hasPermission('manageLoanTerms'), async (req, r
   try {
     const term = await LoanTerm.findByPk(req.params.id);
     if (!term) return res.status(404).json({ success: false, message: 'Loan term not found' });
-    await term.update({ isActive: false, enabled: false, lastUpdatedById: req.admin.id });
+    const payload = { isActive: false, enabled: false };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    await term.update(payload);
     res.json({ success: true, message: 'Loan term deleted successfully' });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to delete loan term' }); }
 });
@@ -183,7 +216,9 @@ router.patch('/bulk-update', adminAuth, hasPermission('manageLoanTerms'), async 
     if (!Array.isArray(termIds) || termIds.length === 0) return res.status(400).json({ success: false, message: 'Term IDs array is required' });
     if (!updates || typeof updates !== 'object') return res.status(400).json({ success: false, message: 'Updates object is required' });
 
-    const [count] = await LoanTerm.update({ ...updates, lastUpdatedById: req.admin.id }, { where: { id: { [Op.in]: termIds }, isActive: true } });
+    const payload = { ...updates };
+    if (hasLoanTermField('lastUpdatedById')) payload.lastUpdatedById = req.admin.id;
+    const [count] = await LoanTerm.update(payload, { where: { id: { [Op.in]: termIds }, isActive: true } });
     res.json({ success: true, message: `Successfully updated ${count} loan terms`, modifiedCount: count });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to bulk update loan terms' }); }
 });

@@ -5,6 +5,7 @@ import {
   Route,
   Navigate,
   useNavigate,
+  useLocation,
 } from "react-router-dom";
 import {
   ThemeProvider,
@@ -12,8 +13,9 @@ import {
   StyledEngineProvider,
 } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
 import { AuthProvider } from "./contexts/AuthContext";
+import { useAuth } from "./contexts/AuthContext";
 import { TabProvider } from "./contexts/TabContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout/Layout";
@@ -86,6 +88,267 @@ const theme = createTheme({
   },
 });
 
+const HOME_FALLBACK_ROUTES = [
+  { path: "/pre-collection/list", menuKey: "preCollection", subMenuKey: "list" },
+  { path: "/collection/list", menuKey: "collection", subMenuKey: "list" },
+  { path: "/order/list", menuKey: "order", subMenuKey: "orderList" },
+  {
+    path: "/fund-management/payments",
+    menuKey: "fundManagement",
+    subMenuKey: "paymentManagement",
+  },
+  { path: "/user/list", menuKey: "user", subMenuKey: "listOfUsers" },
+  { path: "/admin-management", menuKey: "system", subMenuKey: "adminManagement" },
+];
+
+const ROUTE_PERMISSION_RULES = [
+  { prefix: "/user/list", menuKey: "user", subMenuKey: "listOfUsers", label: "User List" },
+  { prefix: "/user/find", menuKey: "user", subMenuKey: "findOne", label: "Find User" },
+  {
+    prefix: "/user/manual-registration",
+    menuKey: "user",
+    subMenuKey: "manualRegistration",
+    label: "Manual Registration",
+  },
+  { prefix: "/user/management", menuKey: "user", subMenuKey: "userManagement", label: "User Management" },
+  {
+    prefix: "/user/level-assignment",
+    menuKey: "user",
+    subMenuKey: "levelAssignment",
+    label: "Level Assignment",
+  },
+  { prefix: "/user", menuKey: "user", label: "User module" },
+
+  { prefix: "/order/list", menuKey: "order", subMenuKey: "orderList", label: "Order List" },
+  { prefix: "/order/lending", menuKey: "order", subMenuKey: "orderLending", label: "Order Lending" },
+  { prefix: "/order/repayment", menuKey: "order", subMenuKey: "orderRepayment", label: "Order Repayment" },
+  {
+    prefix: "/order/review-repayment",
+    menuKey: "order",
+    subMenuKey: "reviewRepayment",
+    label: "Review Repayment",
+  },
+  { prefix: "/order/extension", menuKey: "order", subMenuKey: "extensionOrder", label: "Extension Order" },
+  { prefix: "/order/loan-details", menuKey: "order", subMenuKey: "loanDetails", label: "Loan Details" },
+  { prefix: "/order", menuKey: "order", label: "Order module" },
+
+  {
+    prefix: "/fund-management/payments",
+    menuKey: "fundManagement",
+    subMenuKey: "paymentManagement",
+    label: "Payment Management",
+  },
+  { prefix: "/fund-management", menuKey: "fundManagement", label: "Fund Management" },
+
+  { prefix: "/credit-review/assign", menuKey: "creditReview", subMenuKey: "assign", label: "Credit Assign" },
+  { prefix: "/credit-review/list", menuKey: "creditReview", subMenuKey: "list", label: "Credit Review" },
+  { prefix: "/credit-review/count", menuKey: "creditReview", subMenuKey: "count", label: "Credit Statistics" },
+  { prefix: "/credit-review", menuKey: "creditReview", label: "Credit Review module" },
+
+  {
+    prefix: "/pre-collection/all-list",
+    menuKey: "preCollection",
+    subMenuKey: "allList",
+    label: "Pre-collection All List",
+  },
+  { prefix: "/pre-collection/list", menuKey: "preCollection", subMenuKey: "list", label: "Pre-collection" },
+  { prefix: "/pre-collection/rank1", menuKey: "preCollection", subMenuKey: "rank1", label: "Pre-collection Rank1" },
+  { prefix: "/pre-collection/rank2", menuKey: "preCollection", subMenuKey: "rank2", label: "Pre-collection Rank2" },
+  {
+    prefix: "/pre-collection/payment-record",
+    menuKey: "preCollection",
+    subMenuKey: "paymentRecord",
+    label: "Pre-collection Payment Record",
+  },
+  { prefix: "/pre-collection", menuKey: "preCollection", label: "Pre-collection module" },
+
+  { prefix: "/collection/list", menuKey: "collection", subMenuKey: "list", label: "Collection List" },
+  { prefix: "/collection/rank1", menuKey: "collection", subMenuKey: "rank1", label: "Collection Rank1" },
+  { prefix: "/collection/rank2", menuKey: "collection", subMenuKey: "rank2", label: "Collection Rank2" },
+  {
+    prefix: "/collection/payment-record",
+    menuKey: "collection",
+    subMenuKey: "paymentRecord",
+    label: "Collection Payment Record",
+  },
+  { prefix: "/collection/officers", menuKey: "collection", subMenuKey: "officers", label: "Officer Management" },
+  { prefix: "/collection", menuKey: "collection", label: "Collection module" },
+
+  {
+    prefix: "/app-config",
+    menuKey: "appConfiguration",
+    subMenuKey: "generalSettings",
+    label: "App Configuration",
+  },
+  {
+    prefix: "/loan-settings",
+    menuKey: "appConfiguration",
+    subMenuKey: "loanSettings",
+    label: "Loan Settings",
+  },
+  {
+    prefix: "/loan-configuration",
+    menuKey: "appConfiguration",
+    subMenuKey: "loanConfiguration",
+    label: "Loan Configuration",
+  },
+  {
+    prefix: "/loan-rate-calculation",
+    menuKey: "appConfiguration",
+    subMenuKey: "loanRateCalculation",
+    label: "Loan Rate Calculation",
+  },
+  {
+    prefix: "/app-branding",
+    menuKey: "appConfiguration",
+    subMenuKey: "appBranding",
+    label: "App Branding",
+  },
+  {
+    prefix: "/contact-info",
+    menuKey: "appConfiguration",
+    subMenuKey: "contactInfo",
+    label: "Contact Info",
+  },
+  { prefix: "/faq", menuKey: "appConfiguration", subMenuKey: "faq", label: "FAQ" },
+  {
+    prefix: "/terms-conditions",
+    menuKey: "appConfiguration",
+    subMenuKey: "termsConditions",
+    label: "Terms & Conditions",
+  },
+  {
+    prefix: "/config",
+    menuKey: "appConfiguration",
+    subMenuKey: "generalSettings",
+    label: "Configuration",
+  },
+  { prefix: "/marketing", menuKey: "marketing", label: "Marketing" },
+  {
+    prefix: "/overtime-message",
+    menuKey: "notificationManagement",
+    label: "Overtime Message",
+  },
+
+  {
+    prefix: "/data-statistics/dashboard",
+    menuKey: "dataStatistics",
+    subMenuKey: "dashboard",
+    label: "Dashboard",
+  },
+  { prefix: "/data-statistics", menuKey: "dataStatistics", label: "Data Statistics" },
+
+  {
+    prefix: "/admin-management",
+    menuKey: "system",
+    subMenuKey: "adminManagement",
+    label: "Admin Management",
+  },
+  { prefix: "/roles", menuKey: "system", subMenuKey: "roleManagement", label: "Role Management" },
+  { prefix: "/content", menuKey: "contentManagement", label: "Content Management" },
+  { prefix: "/notifications", menuKey: "notificationManagement", label: "Notifications" },
+];
+
+const getRoutePermission = (path) =>
+  ROUTE_PERMISSION_RULES.find((rule) => path === rule.prefix || path.startsWith(`${rule.prefix}/`));
+
+const resolveDefaultRoute = ({ hasMenuAccess, hasSubMenuAccess, isSuperAdmin }) => {
+  if (isSuperAdmin()) {
+    return "/data-statistics/dashboard";
+  }
+
+  const canSeeDashboard =
+    hasMenuAccess("dataStatistics") &&
+    hasSubMenuAccess("dataStatistics", "dashboard");
+
+  if (canSeeDashboard) {
+    return "/data-statistics/dashboard";
+  }
+
+  const fallback = HOME_FALLBACK_ROUTES.find(
+    ({ menuKey, subMenuKey }) =>
+      hasMenuAccess(menuKey) && hasSubMenuAccess(menuKey, subMenuKey),
+  );
+
+  return fallback?.path || null;
+};
+
+function HomeRoute() {
+  const { loading, hasMenuAccess, hasSubMenuAccess, isSuperAdmin } = useAuth();
+
+  if (loading) return null;
+
+  const defaultRoute = resolveDefaultRoute({
+    hasMenuAccess,
+    hasSubMenuAccess,
+    isSuperAdmin,
+  });
+
+  if (defaultRoute === "/data-statistics/dashboard") {
+    return <SimpleDashboard />;
+  }
+
+  if (defaultRoute) {
+    return <Navigate to={defaultRoute} replace />;
+  }
+
+  return <AccessDeniedPage message="You do not have access to any admin module. Contact your administrator." />;
+}
+
+function PermissionRoute({ menuKey, subMenuKey, children }) {
+  const { loading, hasMenuAccess, hasSubMenuAccess, isSuperAdmin } = useAuth();
+
+  if (loading) return null;
+  if (isSuperAdmin()) return children;
+
+  const hasAccess =
+    hasMenuAccess(menuKey) &&
+    (!subMenuKey || hasSubMenuAccess(menuKey, subMenuKey));
+
+  if (hasAccess) return children;
+
+  return <AccessDeniedPage message="You do not have permission to view this page." />;
+}
+
+function AccessDeniedPage({ message = "You do not have permission to access this page." }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const toastId = `access-denied:${location.pathname}`;
+    if (!toast.isActive(toastId)) {
+      toast.error(message, { toastId });
+    }
+  }, [location.pathname, message]);
+
+  return <div className="page-placeholder">{message}</div>;
+}
+
+function RoutePermissionGuard({ children }) {
+  const location = useLocation();
+  const { loading, hasMenuAccess, hasSubMenuAccess, isSuperAdmin } = useAuth();
+
+  if (loading) return null;
+  if (isSuperAdmin()) return children;
+
+  const path = location.pathname;
+  if (path === "/") return children;
+
+  const rule = getRoutePermission(path);
+  if (!rule) return children;
+
+  const hasAccess =
+    hasMenuAccess(rule.menuKey) &&
+    (!rule.subMenuKey || hasSubMenuAccess(rule.menuKey, rule.subMenuKey));
+
+  if (hasAccess) return children;
+
+  return (
+    <AccessDeniedPage
+      message={`Access denied: you do not have permission for ${rule.label || "this module"}.`}
+    />
+  );
+}
+
 function App() {
   return (
     <StyledEngineProvider injectFirst>
@@ -103,16 +366,12 @@ function App() {
                     element={
                       <ProtectedRoute>
                         <Layout>
-                          <Routes>
-                            <Route path="/" element={<SimpleDashboard />} />
+                          <RoutePermissionGuard>
+                            <Routes>
+                            <Route path="/" element={<HomeRoute />} />
                             <Route
                               path="/dashboard"
-                              element={
-                                <Navigate
-                                  to="/data-statistics/dashboard"
-                                  replace
-                                />
-                              }
+                              element={<Navigate to="/" replace />}
                             />
                             {/* User Management Routes */}
                             <Route
@@ -566,16 +825,18 @@ function App() {
                             {/* Data Statistics Routes */}
                             <Route
                               path="/data-statistics"
-                              element={
-                                <Navigate
-                                  to="/data-statistics/dashboard"
-                                  replace
-                                />
-                              }
+                              element={<Navigate to="/" replace />}
                             />
                             <Route
                               path="/data-statistics/dashboard"
-                              element={<Dashboard />}
+                              element={
+                                <PermissionRoute
+                                  menuKey="dataStatistics"
+                                  subMenuKey="dashboard"
+                                >
+                                  <Dashboard />
+                                </PermissionRoute>
+                              }
                             />
 
                             <Route
@@ -586,7 +847,8 @@ function App() {
                                 </div>
                               }
                             />
-                          </Routes>
+                            </Routes>
+                          </RoutePermissionGuard>
                         </Layout>
                       </ProtectedRoute>
                     }

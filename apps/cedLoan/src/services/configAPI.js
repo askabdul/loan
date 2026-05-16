@@ -6,11 +6,12 @@ class ConfigAPI {
   // Get all app configurations
   async getAllConfigs() {
     try {
-      const response = await axios.get(`${API_URL}/config`);
+      const response = await axios.get(`${API_URL}/config-new`);
       return response.data;
     } catch (error) {
-      console.error("Error fetching app configs:", error);
-      throw error;
+      console.error("Error fetching app configs from /config-new:", error);
+      const fallback = await axios.get(`${API_URL}/config`);
+      return fallback.data;
     }
   }
 
@@ -132,7 +133,7 @@ class ConfigAPI {
   // Get contact information
   async getContactInfo() {
     try {
-      const response = await axios.get(`${API_URL}/config/contact-info`);
+      const response = await axios.get(`${API_URL}/config-new/contact-info`);
       return response.data;
     } catch (error) {
       console.error("Error fetching contact info:", error);
@@ -153,7 +154,7 @@ class ConfigAPI {
   // Get app branding information
   async getAppBranding() {
     try {
-      const response = await axios.get(`${API_URL}/config/app-branding`);
+      const response = await axios.get(`${API_URL}/config-new/app-branding`);
       return response.data;
     } catch (error) {
       console.error("Error fetching app branding:", error);
@@ -174,7 +175,7 @@ class ConfigAPI {
   // Get loan settings
   async getLoanSettings() {
     try {
-      const response = await axios.get(`${API_URL}/config/loan-settings`);
+      const response = await axios.get(`${API_URL}/config-new/loan-settings`);
       return response.data;
     } catch (error) {
       console.error("Error fetching loan settings:", error);
@@ -241,7 +242,9 @@ class ConfigAPI {
   // Update configuration value
   async updateConfig(key, value) {
     try {
-      const response = await axios.put(`${API_URL}/config/${key}`, { value });
+      const response = await axios.put(`${API_URL}/config-new/${key}`, {
+        value,
+      });
       // Clear cache after update
       this.clearCache();
       return response.data;

@@ -56,7 +56,7 @@ const CreditReviewCount = () => {
 
       // Fetch loans grouped by status for credit review
       const [
-        pendingRes,
+        unassignedRes,
         underReviewRes,
         approvedRes,
         rejectedRes,
@@ -66,7 +66,7 @@ const CreditReviewCount = () => {
         officersRes,
       ] = await Promise.allSettled([
         apiService.getLoans({ status: "pending", limit: 1 }),
-        apiService.getLoans({ status: "assigned", limit: 1 }),
+        apiService.getLoans({ status: "under-review", limit: 1 }),
         apiService.getLoans({ status: "approved", limit: 1 }),
         apiService.getLoans({ status: "rejected", limit: 1 }),
         apiService.getLoans({ status: "hanged-up", limit: 1 }),
@@ -82,7 +82,7 @@ const CreditReviewCount = () => {
       };
 
       setStats({
-        pending: count(pendingRes),
+        pending: count(unassignedRes),
         underReview: count(underReviewRes),
         approved: count(approvedRes),
         rejected: count(rejectedRes),
@@ -127,9 +127,7 @@ const CreditReviewCount = () => {
   const total = stats
     ? stats.pending +
       stats.underReview +
-      stats.approved +
-      stats.rejected +
-      stats.hangedUp
+      stats.approved
     : 0;
 
   return (

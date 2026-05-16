@@ -76,6 +76,19 @@ function DueBadge({ dueDate }) {
 function OfficerSelect({ officers, value, onChange }) {
   const [open, setOpen] = useState(false);
   const sel = officers.find((o) => o.id === value);
+  const officerName = (officer) => {
+    if (!officer) return "";
+    const fullName = `${officer.firstName || ""} ${officer.lastName || ""}`.trim();
+    return fullName || officer.name || officer.email || "Unnamed Officer";
+  };
+
+  const officerRoleLabel = (officer) =>
+    officer?.role?.displayName ||
+    officer?.role?.name ||
+    officer?.Role?.displayName ||
+    officer?.Role?.name ||
+    "";
+
   return (
     <div className="relative">
       <button
@@ -84,7 +97,7 @@ function OfficerSelect({ officers, value, onChange }) {
         className="flex items-center justify-between w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         <span className={sel ? "text-gray-800" : "text-gray-400"}>
-          {sel ? `${sel.firstName} ${sel.lastName}` : "Select officer"}
+          {sel ? officerName(sel) : "Select officer"}
         </span>
         <FiChevronDown size={14} className="text-gray-400" />
       </button>
@@ -105,9 +118,9 @@ function OfficerSelect({ officers, value, onChange }) {
                 }}
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition ${value === o.id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700"}`}
               >
-                {o.firstName} {o.lastName}
+                {officerName(o)}
                 <span className="ml-2 text-xs text-gray-400">
-                  {o.Role?.displayName || o.Role?.name || ""}
+                  {officerRoleLabel(o)}
                 </span>
               </button>
             ))
@@ -120,8 +133,8 @@ function OfficerSelect({ officers, value, onChange }) {
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-[250px] z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90vh]">
+    <div className="fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">{title}</h3>
           <button

@@ -97,6 +97,90 @@ const PermCheckboxGroup = ({ entries, onChange }) => (
   </div>
 );
 
+const PermissionSectionEditor = ({ title, tree, onChange, path = [] }) => {
+  const entries = Object.entries(tree || {});
+  if (!entries.length) return null;
+
+  const leafEntries = entries.filter(([, value]) => typeof value !== "object");
+  const nestedEntries = entries.filter(([, value]) => typeof value === "object");
+
+  return (
+    <div className="space-y-3">
+      {title && (
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+          {title}
+        </p>
+      )}
+
+      {leafEntries.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {leafEntries.map(([key, value]) => (
+            <label
+              key={[...path, key].join(".")}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-xs transition-colors ${
+                value
+                  ? "bg-blue-50 border-blue-200 text-blue-800"
+                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={!!value}
+                onChange={(e) => onChange([...path, key], e.target.checked)}
+                className="accent-blue-600 flex-shrink-0"
+              />
+              {camelToWords(key)}
+            </label>
+          ))}
+        </div>
+      )}
+
+      {nestedEntries.map(([key, value]) => (
+        <div
+          key={[...path, key].join(".")}
+          className="bg-gray-50 border border-gray-100 rounded-xl p-3"
+        >
+          <PermissionSectionEditor
+            title={camelToWords(key)}
+            tree={value}
+            onChange={onChange}
+            path={[...path, key]}
+          />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const PermissionSectionView = ({ title, tree }) => {
+  const entries = Object.entries(tree || {});
+  if (!entries.length) return null;
+
+  const leafEntries = entries.filter(([, value]) => typeof value !== "object");
+  const nestedEntries = entries.filter(([, value]) => typeof value === "object");
+
+  return (
+    <div className="space-y-3">
+      {title && (
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+          {title}
+        </p>
+      )}
+
+      {leafEntries.length > 0 && <PermGrid entries={leafEntries} />}
+
+      {nestedEntries.map(([key, value]) => (
+        <div
+          key={key}
+          className="bg-gray-50 border border-gray-100 rounded-xl p-3"
+        >
+          <PermissionSectionView title={camelToWords(key)} tree={value} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // Renders at document.body via portal so it is never clipped by .main-content's
 // overflow:hidden stacking context, and sits above the sidebar (z-index 1000).
 const Modal = ({ onClose, children, wide = false }) =>
@@ -154,17 +238,79 @@ const ModalHeader = ({ title, subtitle, onClose }) => (
 );
 
 // ── Default form state ────────────────────────────────────────────────────────
-const defaultPermissions = {
+const permissionTemplate = {
   menus: {
     dashboard: false,
+    user: false,
+    order: false,
+    fundManagement: false,
     creditReview: false,
     collection: false,
-    precollection: false,
+    preCollection: false,
     userManagement: false,
+    appConfiguration: false,
+    dataStatistics: false,
+    system: false,
+    marketing: false,
+    notificationManagement: false,
     contentManagement: false,
     systemConfig: false,
     reports: false,
     adminManagement: false,
+  },
+  subMenus: {
+    user: {
+      listOfUsers: false,
+      findOne: false,
+      manualRegistration: false,
+      userManagement: false,
+      levelAssignment: false,
+    },
+    order: {
+      orderList: false,
+      orderLending: false,
+      orderRepayment: false,
+      reviewRepayment: false,
+      extensionOrder: false,
+      loanDetails: false,
+    },
+    fundManagement: {
+      paymentManagement: false,
+    },
+    creditReview: {
+      assign: false,
+      list: false,
+      count: false,
+    },
+    preCollection: {
+      allList: false,
+      list: false,
+      rank1: false,
+      rank2: false,
+      paymentRecord: false,
+    },
+    collection: {
+      list: false,
+      rank1: false,
+      rank2: false,
+      paymentRecord: false,
+      officers: false,
+    },
+    appConfiguration: {
+      generalSettings: false,
+      loanSettings: false,
+      loanConfiguration: false,
+      loanRateCalculation: false,
+      appBranding: false,
+      contactInfo: false,
+    },
+    dataStatistics: {
+      dashboard: false,
+    },
+    system: {
+      adminManagement: false,
+      roleManagement: false,
+    },
   },
   dataAccess: {
     viewAllLoans: false,
@@ -175,6 +321,19 @@ const defaultPermissions = {
     rejectLoans: false,
     assignLoans: false,
     exportData: false,
+    "users.personalInfo": false,
+    "users.phone": false,
+    "users.financialInfo": false,
+    "users.loanHistory": false,
+    "users.workInfo": false,
+    "loans.basic": false,
+    "loans.amount": false,
+    "loans.terms": false,
+    "loans.history": false,
+    "loans.documents": false,
+    "payments.amount": false,
+    "payments.provider": false,
+    "payments.details": false,
   },
   actions: {
     createAdmin: false,
@@ -182,17 +341,119 @@ const defaultPermissions = {
     deleteAdmin: false,
     manageRoles: false,
     systemConfig: false,
+    approveLoan: false,
+    rejectLoan: false,
+    assignLoan: false,
+    createRole: false,
+    editRole: false,
+    deleteRole: false,
+    resetPassword: false,
+  },
+  uiElements: {
+    buttons: {
+      createAdmin: false,
+      editAdmin: false,
+      deleteAdmin: false,
+      assignCase: false,
+      bulkAssign: false,
+      exportData: false,
+    },
+    tables: {
+      users: false,
+      loans: false,
+      payments: false,
+      officers: false,
+      roles: false,
+    },
+    forms: {
+      userEdit: false,
+      roleEdit: false,
+      loanApproval: false,
+      paymentReview: false,
+    },
+    modals: {
+      userDetails: false,
+      roleDetails: false,
+      assignment: false,
+    },
+  },
+  bulkActions: {
+    bulkAssign: false,
+    bulkUnassign: false,
+    bulkDeactivate: false,
+    bulkExport: false,
   },
 };
 
-const defaultForm = {
+const cloneDeep = (value) => JSON.parse(JSON.stringify(value));
+
+const normalizePermissionAliases = (permissions = {}) => {
+  const next = cloneDeep(permissions || {});
+
+  next.menus = next.menus || {};
+  if (
+    Object.prototype.hasOwnProperty.call(next.menus, "preCollection") ||
+    Object.prototype.hasOwnProperty.call(next.menus, "precollection")
+  ) {
+    next.menus.preCollection =
+      Boolean(next.menus.preCollection) || Boolean(next.menus.precollection);
+  }
+  delete next.menus.precollection;
+
+  next.subMenus = next.subMenus || {};
+  const preCollectionSubMenus = next.subMenus.preCollection || {};
+  const precollectionSubMenus = next.subMenus.precollection || {};
+  const mergedSubMenuKeys = Array.from(
+    new Set([
+      ...Object.keys(preCollectionSubMenus),
+      ...Object.keys(precollectionSubMenus),
+    ]),
+  );
+  if (mergedSubMenuKeys.length > 0) {
+    next.subMenus.preCollection = mergedSubMenuKeys.reduce((acc, key) => {
+      acc[key] =
+        Boolean(preCollectionSubMenus[key]) ||
+        Boolean(precollectionSubMenus[key]);
+      return acc;
+    }, {});
+  }
+  delete next.subMenus.precollection;
+
+  return next;
+};
+
+const mergePermissionTrees = (template, existing) => {
+  if (typeof template !== "object" || template === null) {
+    return typeof existing === "boolean" ? existing : template;
+  }
+
+  const result = Array.isArray(template) ? [...template] : {};
+  const existingObject =
+    existing && typeof existing === "object" ? existing : undefined;
+
+  Object.keys(template).forEach((key) => {
+    result[key] = mergePermissionTrees(template[key], existingObject?.[key]);
+  });
+
+  return result;
+};
+
+const mergePermissionsWithTemplate = (existingPermissions = {}) =>
+  mergePermissionTrees(
+    permissionTemplate,
+    normalizePermissionAliases(existingPermissions),
+  );
+
+const buildDefaultForm = () => ({
   name: "",
   displayName: "",
   description: "",
   hierarchy: 1,
   isActive: true,
-  permissions: defaultPermissions,
-};
+  permissions: cloneDeep(permissionTemplate),
+});
+
+const defaultForm = buildDefaultForm();
 
 // ── Main component ────────────────────────────────────────────────────────────
 const RoleManagement = () => {
@@ -279,7 +540,7 @@ const RoleManagement = () => {
   };
 
   const openCreate = () => {
-    setFormData(defaultForm);
+    setFormData(buildDefaultForm());
     setIsEditing(false);
     setFormError("");
     setShowFormModal(true);
@@ -293,7 +554,7 @@ const RoleManagement = () => {
       description: role.description || "",
       hierarchy: role.hierarchy || 1,
       isActive: role.isActive ?? true,
-      permissions: role.permissions || defaultPermissions,
+      permissions: mergePermissionsWithTemplate(role.permissions || {}),
     });
     setIsEditing(true);
     setFormError("");
@@ -344,9 +605,13 @@ const RoleManagement = () => {
     setFormSubmitting(true);
     setFormError("");
     try {
+      const payload = {
+        ...formData,
+        permissions: normalizePermissionAliases(formData.permissions || {}),
+      };
       const res = isEditing
-        ? await apiService.updateRole(selectedRole.id, formData)
-        : await apiService.createRole(formData);
+        ? await apiService.updateRole(selectedRole.id, payload)
+        : await apiService.createRole(payload);
       if (res.success) {
         closeModals();
         fetchRoles(currentPage, searchTerm, filterStatus);
@@ -361,13 +626,22 @@ const RoleManagement = () => {
     }
   };
 
-  const handlePermChange = (category, key, value) => {
+  const handlePermChange = (path, value) => {
     setFormData((prev) => ({
       ...prev,
-      permissions: {
-        ...prev.permissions,
-        [category]: { ...prev.permissions[category], [key]: value },
-      },
+      permissions: (() => {
+        const next = cloneDeep(prev.permissions || {});
+        let cursor = next;
+        for (let index = 0; index < path.length - 1; index += 1) {
+          const key = path[index];
+          cursor[key] =
+            cursor[key] && typeof cursor[key] === "object" ? cursor[key] : {};
+          cursor = cursor[key];
+        }
+        cursor[path[path.length - 1]] = value;
+
+        return next;
+      })(),
     }));
   };
 
@@ -818,22 +1092,18 @@ const RoleManagement = () => {
             )}
             {[
               { key: "menus", label: "Menu Access" },
-              { key: "dataAccess", label: "Data Access" },
-              { key: "actions", label: "Actions" },
-            ].map(({ key, label }) => {
-              const entries = Object.entries(
-                selectedRole.permissions?.[key] || {},
-              );
-              if (!entries.length) return null;
-              return (
-                <div key={key}>
-                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-                    {label}
-                  </p>
-                  <PermGrid entries={entries} />
-                </div>
-              );
-            })}
+              { key: "subMenus", label: "Sidebar & Submenu Access" },
+              { key: "dataAccess", label: "Data Attributes Access" },
+              { key: "actions", label: "Action Permissions" },
+              { key: "uiElements", label: "UI Attributes Access" },
+              { key: "bulkActions", label: "Bulk Actions" },
+            ].map(({ key, label }) => (
+              <PermissionSectionView
+                key={key}
+                title={label}
+                tree={selectedRole.permissions?.[key] || {}}
+              />
+            ))}
           </div>
           <div className="flex justify-end px-6 py-4 border-t border-gray-100 flex-shrink-0 gap-3">
             {(hasActionPermission("manageRoles") || isSuperAdmin()) && (
@@ -977,24 +1247,20 @@ const RoleManagement = () => {
                   </div>
                   {[
                     { key: "menus", label: "Menu Access" },
-                    { key: "dataAccess", label: "Data Access" },
-                    { key: "actions", label: "Actions" },
-                  ].map(({ key, label }) => {
-                    const entries = Object.entries(
-                      formData.permissions[key] || {},
-                    );
-                    return (
-                      <div key={key}>
-                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-                          {label}
-                        </p>
-                        <PermCheckboxGroup
-                          entries={entries}
-                          onChange={(k, v) => handlePermChange(key, k, v)}
-                        />
-                      </div>
-                    );
-                  })}
+                    { key: "subMenus", label: "Sidebar & Submenu Access" },
+                    { key: "dataAccess", label: "Data Attributes Access" },
+                    { key: "actions", label: "Action Permissions" },
+                    { key: "uiElements", label: "UI Attributes Access" },
+                    { key: "bulkActions", label: "Bulk Actions" },
+                  ].map(({ key, label }) => (
+                    <PermissionSectionEditor
+                      key={key}
+                      title={label}
+                      tree={formData.permissions[key] || {}}
+                      onChange={handlePermChange}
+                      path={[key]}
+                    />
+                  ))}
                 </div>
                 <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
                   <button

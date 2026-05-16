@@ -69,8 +69,8 @@ const ManualDisburseModal = ({ loan, onClose, onSuccess }) => {
   };
 
   return (
-    <div className="fixed top-0 left-[250px] right-0 bottom-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+    <div className="fixed top-0 left-0 md:left-64 right-0 bottom-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-xl">
         <div className="p-6 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">
             Record Disbursement

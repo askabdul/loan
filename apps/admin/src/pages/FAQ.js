@@ -7,6 +7,7 @@ import {
   FiX,
   FiHelpCircle,
 } from "react-icons/fi";
+import apiService from "../services/api";
 
 const FAQ = () => {
   const [faqs, setFaqs] = useState([]);
@@ -37,43 +38,24 @@ const FAQ = () => {
   const fetchFAQs = async () => {
     try {
       setLoading(true);
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch("/api/admin/content/faq");
-      if (response.ok) {
-        const data = await response.json();
-        setFaqs(data.data || []);
-      } else {
-        // Set default FAQs if no data exists
-        setFaqs([
-          {
-            id: 1,
-            question: "How do I apply for a loan?",
-            answer:
-              "You can apply for a loan through our mobile app by filling out the application form and providing the required documents.",
-            category: "loans",
-            isActive: true,
-            order: 1,
-          },
-          {
-            id: 2,
-            question: "What documents do I need?",
-            answer:
-              "You will need a valid ID, proof of income, and bank statements for the last 3 months.",
-            category: "loans",
-            isActive: true,
-            order: 2,
-          },
-          {
-            id: 3,
-            question: "How long does loan approval take?",
-            answer:
-              "Loan approval typically takes 24-48 hours after submitting all required documents.",
-            category: "loans",
-            isActive: true,
-            order: 3,
-          },
-        ]);
-      }
+      const response = await apiService.getAllContent();
+      const items = response?.data || [];
+      const mappedFaqs = items
+        .filter((item) => item.type === "faq")
+        .map((item) => ({
+          id: item.id,
+          question: item.title || "",
+          answer:
+            item.content?.answer ||
+            (typeof item.content === "string" ? item.content : ""),
+          category: item.content?.category || "general",
+          isActive: item.isActive !== false,
+          order: item.sortOrder || item.order || 0,
+          key: item.key,
+        }))
+        .sort((a, b) => a.order - b.order);
+
+      setFaqs(mappedFaqs);
     } catch (error) {
       console.error("Error fetching FAQs:", error);
       showMessage("Error loading FAQs", "error");
@@ -95,32 +77,23 @@ const FAQ = () => {
 
     try {
       setSaving(true);
-
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch("/api/admin/content/faq", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const order = faqs.length + 1;
+      await apiService.createContent({
+        key: `faq_${Date.now()}`,
+        type: "faq",
+        title: newFaq.question,
+        content: {
+          answer: newFaq.answer,
+          category: newFaq.category,
         },
-        body: JSON.stringify({
-          ...newFaq,
-          order: faqs.length + 1,
-          isActive: true,
-        }),
+        sortOrder: order,
+        isActive: true,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setFaqs([
-          ...faqs,
-          { ...newFaq, id: Date.now(), order: faqs.length + 1, isActive: true },
-        ]);
-        setNewFaq({ question: "", answer: "", category: "general" });
-        setShowAddForm(false);
-        showMessage("FAQ added successfully!");
-      } else {
-        showMessage("Failed to add FAQ", "error");
-      }
+      setNewFaq({ question: "", answer: "", category: "general" });
+      setShowAddForm(false);
+      await fetchFAQs();
+      showMessage("FAQ added successfully!");
     } catch (error) {
       console.error("Error adding FAQ:", error);
       showMessage("Error adding FAQ", "error");
@@ -132,25 +105,17 @@ const FAQ = () => {
   const handleUpdateFaq = async (id, updatedFaq) => {
     try {
       setSaving(true);
-
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch(`/api/admin/content/faq/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
+      await apiService.updateContent(id, {
+        title: updatedFaq.question,
+        content: {
+          answer: updatedFaq.answer,
+          category: updatedFaq.category,
         },
-        body: JSON.stringify(updatedFaq),
+        isActive: updatedFaq.isActive,
       });
-
-      if (response.ok) {
-        setFaqs(
-          faqs.map((faq) => (faq.id === id ? { ...faq, ...updatedFaq } : faq)),
-        );
-        setEditingId(null);
-        showMessage("FAQ updated successfully!");
-      } else {
-        showMessage("Failed to update FAQ", "error");
-      }
+      await fetchFAQs();
+      setEditingId(null);
+      showMessage("FAQ updated successfully!");
     } catch (error) {
       console.error("Error updating FAQ:", error);
       showMessage("Error updating FAQ", "error");
@@ -162,18 +127,9 @@ const FAQ = () => {
   const handleDeleteFaq = async (id) => {
     try {
       setSaving(true);
-
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch(`/api/admin/content/faq/${id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        setFaqs(faqs.filter((faq) => faq.id !== id));
-        showMessage("FAQ deleted successfully!");
-      } else {
-        showMessage("Failed to delete FAQ", "error");
-      }
+      await apiService.deleteContent(id);
+      setFaqs(faqs.filter((faq) => faq.id !== id));
+      showMessage("FAQ deleted successfully!");
     } catch (error) {
       console.error("Error deleting FAQ:", error);
       showMessage("Error deleting FAQ", "error");
@@ -185,27 +141,24 @@ const FAQ = () => {
   const toggleFaqStatus = async (id, isActive) => {
     try {
       setSaving(true);
-
-      const response = await fetch(`/api/admin/content/faq/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
+      const targetFaq = faqs.find((faq) => faq.id === id);
+      await apiService.updateContent(id, {
+        title: targetFaq?.question || "",
+        content: {
+          answer: targetFaq?.answer || "",
+          category: targetFaq?.category || "general",
         },
-        body: JSON.stringify({ isActive: !isActive }),
+        isActive: !isActive,
       });
 
-      if (response.ok) {
-        setFaqs(
-          faqs.map((faq) =>
-            faq.id === id ? { ...faq, isActive: !isActive } : faq,
-          ),
-        );
-        showMessage(
-          `FAQ ${!isActive ? "activated" : "deactivated"} successfully!`,
-        );
-      } else {
-        showMessage("Failed to update FAQ status", "error");
-      }
+      setFaqs(
+        faqs.map((faq) =>
+          faq.id === id ? { ...faq, isActive: !isActive } : faq,
+        ),
+      );
+      showMessage(
+        `FAQ ${!isActive ? "activated" : "deactivated"} successfully!`,
+      );
     } catch (error) {
       console.error("Error updating FAQ status:", error);
       showMessage("Error updating FAQ status", "error");
@@ -471,8 +424,8 @@ const EditFaqForm = ({ faq, categories, onSave, onCancel, saving }) => {
             className={inp}
           >
             {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
+              <option key={c.value} value={c.value}>
+                {c.label}
               </option>
             ))}
           </select>

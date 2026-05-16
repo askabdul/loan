@@ -12,13 +12,25 @@
 .udm-modal {
   background: #fff;
   border-radius: 16px;
-  width: 100%;
+  width: 92vw;
   max-width: 760px;
   max-height: 92vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+@media (min-width: 768px) {
+  .udm-modal {
+    width: 60vw;
+  }
+}
+
+@media (min-width: 1200px) {
+  .udm-modal {
+    width: 50vw;
+  }
 }
 
 .udm-header {

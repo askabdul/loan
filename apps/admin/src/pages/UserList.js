@@ -8,6 +8,7 @@ import {
   FiUnlock,
   FiRefreshCw,
   FiUsers,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
 import apiService from "../services/api";
@@ -26,6 +27,7 @@ const UserList = () => {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [selectedUser, setSelectedUser] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [confirmStatusChange, setConfirmStatusChange] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -166,7 +168,13 @@ const UserList = () => {
     setSelectedUser(null);
   };
 
-  const handleBlockUser = async (userId, isCurrentlyActive) => {
+  const requestBlockUser = (userId, isCurrentlyActive) => {
+    setConfirmStatusChange({ userId, isCurrentlyActive });
+  };
+
+  const handleBlockUser = async () => {
+    if (!confirmStatusChange) return;
+    const { userId, isCurrentlyActive } = confirmStatusChange;
     try {
       setBlockingUser(userId);
       // Toggle: if currently active → deactivate; if inactive → activate
@@ -183,6 +191,7 @@ const UserList = () => {
       console.error("Error updating user status:", error);
     } finally {
       setBlockingUser(null);
+      setConfirmStatusChange(null);
     }
   };
 
@@ -427,7 +436,7 @@ const UserList = () => {
                           {hasActionPermission("editUsers") && (
                             <button
                               onClick={() =>
-                                handleBlockUser(user.id, user.isActive)
+                                requestBlockUser(user.id, user.isActive)
                               }
                               disabled={blockingUser === user.id}
                               title={
@@ -503,6 +512,59 @@ const UserList = () => {
           fetchUsers();
         }}
       />
+
+      {confirmStatusChange && (
+        <div
+          className="fixed top-0 right-0 bottom-0 left-0 md:left-64 z-50 bg-black/35 flex items-center justify-center p-4"
+          onClick={() => setConfirmStatusChange(null)}
+        >
+          <div
+            className="w-[92vw] md:w-[42vw] lg:w-[32vw] max-w-sm bg-white rounded-xl border border-gray-200 shadow-xl p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700">
+                <FiAlertTriangle size={16} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-800 m-0">
+                  {confirmStatusChange.isCurrentlyActive
+                    ? "Block this user?"
+                    : "Unblock this user?"}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1 mb-0">
+                  {confirmStatusChange.isCurrentlyActive
+                    ? "The user will be unable to access the app until unblocked."
+                    : "The user will regain account access immediately."}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmStatusChange(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBlockUser}
+                disabled={blockingUser === confirmStatusChange.userId}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition disabled:opacity-50 ${
+                  confirmStatusChange.isCurrentlyActive
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+              >
+                {blockingUser === confirmStatusChange.userId
+                  ? "Please wait..."
+                  : confirmStatusChange.isCurrentlyActive
+                    ? "Block User"
+                    : "Unblock User"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

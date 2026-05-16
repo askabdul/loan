@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSave, FiEdit2, FiEye, FiClock, FiFileText } from 'react-icons/fi';
+import apiService from '../services/api';
+
+const TERMS_KEY = 'terms_and_conditions';
 
 const TermsConditions = () => {
   const [termsData, setTermsData] = useState({
@@ -25,23 +28,29 @@ const TermsConditions = () => {
   const fetchTermsData = async () => {
     try {
       setLoading(true);
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch('/api/admin/content/terms');
-      if (response.ok) {
-        const data = await response.json();
-        setTermsData(data.data || {
-          content: defaultTermsContent,
-          lastUpdated: new Date().toISOString(),
-          version: '1.0',
-          isActive: true
+      const response = await apiService.getAllContent();
+      const items = response?.data || [];
+      const termsItem = items.find(
+        (item) => item.key === TERMS_KEY || item.key === 'terms',
+      );
+
+      if (termsItem) {
+        const contentBody =
+          termsItem.content?.body ||
+          (typeof termsItem.content === 'string' ? termsItem.content : '');
+        setTermsData({
+          id: termsItem.id,
+          content: contentBody,
+          lastUpdated: termsItem.updatedAt || termsItem.createdAt || null,
+          version: termsItem.content?.version || '1.0',
+          isActive: termsItem.isActive !== false,
         });
       } else {
-        // Set default terms if no data exists
         setTermsData({
           content: defaultTermsContent,
           lastUpdated: new Date().toISOString(),
           version: '1.0',
-          isActive: true
+          isActive: true,
         });
       }
     } catch (error) {
@@ -82,29 +91,42 @@ const TermsConditions = () => {
       setSaving(true);
       
       const updatedTerms = {
+        id: termsData.id,
         content: editContent,
         lastUpdated: new Date().toISOString(),
         version: incrementVersion(termsData.version),
         isActive: true
       };
 
-      // Simulate API call - replace with actual API endpoint
-      const response = await fetch('/api/admin/content/terms', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatedTerms),
-      });
-
-      if (response.ok) {
-        setTermsData(updatedTerms);
-        setIsEditing(false);
-        setEditContent('');
-        showMessage('Terms and Conditions updated successfully!');
+      if (termsData.id) {
+        await apiService.updateContent(termsData.id, {
+          key: TERMS_KEY,
+          type: 'general',
+          title: 'Terms and Conditions',
+          content: {
+            body: updatedTerms.content,
+            version: updatedTerms.version,
+          },
+          isActive: true,
+        });
       } else {
-        showMessage('Failed to update Terms and Conditions', 'error');
+        await apiService.createContent({
+          key: TERMS_KEY,
+          type: 'general',
+          title: 'Terms and Conditions',
+          content: {
+            body: updatedTerms.content,
+            version: updatedTerms.version,
+          },
+          sortOrder: 1,
+          isActive: true,
+        });
       }
+
+      setTermsData(updatedTerms);
+      setIsEditing(false);
+      setEditContent('');
+      showMessage('Terms and Conditions updated successfully!');
     } catch (error) {
       console.error('Error updating terms:', error);
       showMessage('Error updating Terms and Conditions', 'error');
