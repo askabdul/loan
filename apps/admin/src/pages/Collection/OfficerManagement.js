@@ -18,6 +18,7 @@ import {
   FiUser,
   FiToggleLeft,
   FiToggleRight,
+  FiEye,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 import { useAuth } from "../../contexts/AuthContext";
@@ -88,6 +89,32 @@ const OfficerManagement = () => {
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [roleFilter, setRoleFilter] = useState("all");
+  const [casesModal, setCasesModal] = useState(null);
+  const [casesData, setCasesData] = useState(null);
+  const [casesLoading, setCasesLoading] = useState(false);
+
+  const fetchOfficerCases = async (officer) => {
+    if (!officer?.id) return;
+    setCasesModal(officer);
+    setCasesLoading(true);
+    setCasesData(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/admin-management/officers/${officer.id}/cases?limit=50`,
+        { headers: authHeader() },
+      );
+      const data = await res.json();
+      if (data.success) {
+        setCasesData(data.data);
+      } else {
+        toast.error(data.message || "Failed to load officer cases");
+      }
+    } catch {
+      toast.error("Network error loading officer cases");
+    } finally {
+      setCasesLoading(false);
+    }
+  };
 
   const fetchOfficers = useCallback(async () => {
     setLoading(true);
@@ -346,10 +373,105 @@ const OfficerManagement = () => {
                 >
                   {o.isActive ? "Active" : "Inactive"}
                 </span>
+                <div className="pt-2">
+                  <button
+                    onClick={() => fetchOfficerCases(o)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
+                  >
+                    <FiEye size={12} /> View Assigned Cases
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {casesModal && (
+        <Modal
+          title={`Assigned Cases · ${casesModal.name}`}
+          onClose={() => {
+            setCasesModal(null);
+            setCasesData(null);
+          }}
+        >
+          {casesLoading ? (
+            <div className="flex items-center justify-center py-16 text-sm text-gray-400">
+              <FiRefreshCw size={15} className="animate-spin mr-2" /> Loading assigned cases…
+            </div>
+          ) : !casesData ? (
+            <div className="text-sm text-gray-400">No data available.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-100 text-xs">
+                  <p className="text-gray-400">Total</p>
+                  <p className="font-semibold text-gray-700">{casesData.summary?.totalAssigned || 0}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-100 text-xs">
+                  <p className="text-blue-500">Review</p>
+                  <p className="font-semibold text-blue-700">{casesData.summary?.reviewAssigned || 0}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-100 text-xs">
+                  <p className="text-amber-500">Pre-Collection</p>
+                  <p className="font-semibold text-amber-700">{casesData.summary?.precollectionAssigned || 0}</p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 text-xs">
+                  <p className="text-emerald-500">Collection</p>
+                  <p className="font-semibold text-emerald-700">{casesData.summary?.collectionAssigned || 0}</p>
+                </div>
+              </div>
+
+              {["review", "precollection", "collection"].map((groupKey) => {
+                const items = casesData?.cases?.[groupKey] || [];
+                const title =
+                  groupKey === "precollection"
+                    ? "Pre-Collection"
+                    : groupKey === "collection"
+                      ? "Collection"
+                      : "Credit Review";
+
+                return (
+                  <div key={groupKey} className="border border-gray-100 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-600">
+                      {title} · {items.length}
+                    </div>
+                    {items.length === 0 ? (
+                      <p className="px-3 py-3 text-xs text-gray-400">No assigned cases.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-gray-500 border-b border-gray-100">
+                              <th className="px-3 py-2">Loan</th>
+                              <th className="px-3 py-2">Customer</th>
+                              <th className="px-3 py-2">Phone</th>
+                              <th className="px-3 py-2">Status</th>
+                              <th className="px-3 py-2">Balance</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((loan) => (
+                              <tr key={`${groupKey}-${loan.id}`} className="border-b border-gray-50">
+                                <td className="px-3 py-2 font-mono text-gray-600">{loan.loanId || loan.id?.slice(-8)}</td>
+                                <td className="px-3 py-2 text-gray-700">{loan.User?.firstName} {loan.User?.lastName}</td>
+                                <td className="px-3 py-2 text-gray-500">{loan.User?.phoneNumber || "—"}</td>
+                                <td className="px-3 py-2 text-gray-600">
+                                  {loan.precollectionStatus || loan.collectionStatus || loan.assignmentStatus || loan.status}
+                                </td>
+                                <td className="px-3 py-2 text-gray-700">{Number(loan.remainingBalance || 0).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
       )}
 
       {/* Create Officer Modal */}

@@ -11,6 +11,31 @@ const notificationService = require("../services/notificationService");
 
 const router = express.Router();
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const findUserByAnyId = async (identifier) => {
+  if (!identifier) return null;
+  if (UUID_REGEX.test(String(identifier))) {
+    const byPk = await User.findByPk(identifier);
+    if (byPk) return byPk;
+  }
+  return User.findOne({ where: { userId: String(identifier) } });
+};
+
+const findLoanByAnyId = async (identifier, include = undefined) => {
+  if (!identifier) return null;
+  const includeConfig = include || undefined;
+  if (UUID_REGEX.test(String(identifier))) {
+    const byPk = await Loan.findByPk(identifier, includeConfig ? { include: includeConfig } : undefined);
+    if (byPk) return byPk;
+  }
+  return Loan.findOne({
+    where: { loanId: String(identifier) },
+    ...(includeConfig ? { include: includeConfig } : {}),
+  });
+};
+
 // ── File upload ───────────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/loan-clearance/"),
@@ -35,8 +60,8 @@ router.post(
   adminAuth,
   upload.single("popFile"),
   [
-    body("userId").isUUID(),
-    body("loanId").isUUID(),
+    body("userId").isString().notEmpty(),
+    body("loanId").isString().notEmpty(),
     body("paymentType").isIn(["full", "partial"]),
     body("amountCleared").isFloat({ min: 1 }),
     body("submissionNotes").optional().isString(),
@@ -50,26 +75,30 @@ router.post(
       const { userId, loanId, paymentType, amountCleared, submissionNotes } =
         req.body;
 
-      const user = await User.findByPk(userId);
+      const user = await findUserByAnyId(userId);
       if (!user)
         return res
           .status(404)
           .json({ success: false, message: "User not found." });
 
-      const loan = await Loan.findByPk(loanId);
+      const loan = await findLoanByAnyId(loanId);
       if (!loan)
         return res
           .status(404)
           .json({ success: false, message: "Loan not found." });
 
-      if (loan.userId !== userId) {
+      if (loan.userId !== user.id) {
         return res
           .status(400)
           .json({
             success: false,
             message:
               "Mismatch: This loan does not belong to the specified user.",
-            details: { providedUserId: userId, loanBelongsToUser: loan.userId },
+            details: {
+              providedUserId: userId,
+              resolvedUserId: user.id,
+              loanBelongsToUser: loan.userId,
+            },
           });
       }
       // Allow clearance for both active AND overdue loans
@@ -100,8 +129,8 @@ router.post(
           });
 
       const clearanceRequest = await LoanClearance.create({
-        userId,
-        loanId,
+        userId: user.id,
+        loanId: loan.id,
         paymentType,
         amountCleared: parseFloat(amountCleared),
         popUrl: req.file.path,
@@ -410,29 +439,29 @@ router.get("/search-loan", adminAuth, async (req, res) => {
         .status(400)
         .json({ success: false, message: "userId and loanId are required." });
 
-    const user = await User.findByPk(userId, {
-      attributes: ["id", "firstName", "lastName", "phoneNumber"],
-    });
+    const user = await findUserByAnyId(userId);
     if (!user)
       return res
         .status(404)
         .json({ success: false, message: "User not found." });
 
-    const loan = await Loan.findByPk(loanId, {
-      include: [
-        {
-          model: User,
-          as: "User",
-          attributes: ["id", "firstName", "lastName", "phoneNumber"],
-        },
-      ],
+    const normalizedUser = await User.findByPk(user.id, {
+      attributes: ["id", "firstName", "lastName", "phoneNumber"],
     });
+
+    const loan = await findLoanByAnyId(loanId, [
+      {
+        model: User,
+        as: "User",
+        attributes: ["id", "firstName", "lastName", "phoneNumber"],
+      },
+    ]);
     if (!loan)
       return res
         .status(404)
         .json({ success: false, message: "Loan not found." });
 
-    if (loan.userId !== userId) {
+    if (loan.userId !== user.id) {
       return res
         .status(400)
         .json({
@@ -440,8 +469,9 @@ router.get("/search-loan", adminAuth, async (req, res) => {
           message: "Mismatch: loan does not belong to specified user.",
           details: {
             providedUserId: userId,
+            resolvedUserId: user.id,
             loanBelongsToUser: loan.userId,
-            userDetails: user,
+            userDetails: normalizedUser,
             loanOwnerDetails: loan.User,
           },
         });
@@ -451,7 +481,7 @@ router.get("/search-loan", adminAuth, async (req, res) => {
       success: true,
       message: "Loan found and verified.",
       data: {
-        user,
+        user: normalizedUser,
         loan: {
           id: loan.id,
           loanId: loan.loanId,

@@ -1,5 +1,9 @@
 const { Op } = require('sequelize');
 const websocketService = require('./websocketService');
+const {
+  getLoanLifecycleSettings,
+  calculateOverdueDays,
+} = require('./loanLifecycleSettings');
 
 const getModels = () => require('../models');
 
@@ -38,9 +42,10 @@ class OverdueTrackingService {
       console.log('🔍 Checking for overdue loans...');
       const { Loan, User } = getModels();
       const now = new Date();
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
 
       const overdueLoans = await Loan.findAll({
-        where: { status: 'active', dueDate: { [Op.lt]: now }, isOverdue: false },
+        where: { status: 'active', dueDate: { [Op.lte]: now }, isOverdue: false },
         include: [{ model: User, as: 'User', attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber'] }],
       });
 
@@ -52,7 +57,11 @@ class OverdueTrackingService {
       console.log(`📋 Found ${overdueLoans.length} loans that are now overdue`);
 
       const results = await Promise.all(overdueLoans.map(async (loan) => {
-        const overdueDays = Math.ceil((now - loan.dueDate) / (1000 * 60 * 60 * 24));
+        const overdueDays = calculateOverdueDays({
+          dueDate: loan.dueDate,
+          now,
+          mode: loanLifecycleSettings.overdueDayCountMode,
+        });
         const overdueAmount = this.calculateOverdueAmount(loan, overdueDays);
 
         await loan.update({ status: 'overdue', isOverdue: true, overdueDays, overdueAmount });
@@ -101,6 +110,7 @@ class OverdueTrackingService {
       console.log('🔄 Updating existing overdue loans...');
       const { Loan } = getModels();
       const now = new Date();
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
 
       const existingOverdueLoans = await Loan.findAll({ where: { status: 'overdue', isOverdue: true } });
 
@@ -110,7 +120,11 @@ class OverdueTrackingService {
       }
 
       const results = await Promise.all(existingOverdueLoans.map(async (loan) => {
-        const overdueDays = Math.ceil((now - loan.dueDate) / (1000 * 60 * 60 * 24));
+        const overdueDays = calculateOverdueDays({
+          dueDate: loan.dueDate,
+          now,
+          mode: loanLifecycleSettings.overdueDayCountMode,
+        });
         const overdueAmount = this.calculateOverdueAmount(loan, overdueDays);
         await loan.update({ overdueDays, overdueAmount });
         return { loanId: loan.loanId, overdueDays, overdueAmount };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useSocket } from "../../contexts/SocketContext";
 import { useConfig } from "../../contexts/ConfigContext";
@@ -10,6 +11,7 @@ import LoanTermsCarousel from "../../components/LoanTermsCarousel";
 
 const LoanApplication = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { showToast } = useToast();
   const { getLoanConfig, loading: configLoading } = useConfig();
   useSocket(); // Initialize socket connection
@@ -22,19 +24,13 @@ const LoanApplication = () => {
   const [remainingBalance, setRemainingBalance] = useState(0);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [availableTerms, setAvailableTerms] = useState([7, 14, 30]);
-  const [dynamicFees, setDynamicFees] = useState(null);
-  const [isDisbursementLoading, setIsDisbursementLoading] = useState(false);
-  const [disbursementJustRequested, setDisbursementJustRequested] =
-    useState(false);
-  const [confirmReceiptLoading, setConfirmReceiptLoading] = useState(false);
-  const [receiptJustConfirmed, setReceiptJustConfirmed] = useState(false);
-  const [confirmReceiptError, setConfirmReceiptError] = useState(null);
-  const [isCalculatingFees, setIsCalculatingFees] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState(7);
   const [isLoading, setIsLoading] = useState(true);
-  const [userLevelInfo, setUserLevelInfo] = useState(null);
   const [currentLevel, setCurrentLevel] = useState(null);
+  const [userLevelInfo, setUserLevelInfo] = useState(null);
+  const [availableTerms, setAvailableTerms] = useState([7, 14, 30]);
+  const [dynamicFees, setDynamicFees] = useState(null);
+  const [isCalculatingFees, setIsCalculatingFees] = useState(false);
   const [minAmount, setMinAmount] = useState(100);
   const [maxAmount, setMaxAmount] = useState(5000);
 
@@ -501,74 +497,24 @@ const LoanApplication = () => {
         </div>
       )}
 
-      {/* Action Buttons */}
-      {(() => {
-        const alreadyRequested =
-          disbursementJustRequested ||
-          (activeLoan?.adminNotes || []).some(
-            (n) => n.type === "disbursement_request",
-          );
-
-        if (alreadyRequested) {
-          return (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                <span className="text-sm font-semibold text-amber-700">
-                  Disbursement Request Submitted
-                </span>
-              </div>
-              <p className="text-xs text-amber-600">
-                Your request has been received. Our team is processing it and
-                you will be notified once funds are sent to your account.
-              </p>
-              <button
-                className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3 text-sm font-semibold"
-                onClick={() => navigate("/history")}
-              >
-                📋 View Details
-              </button>
-            </div>
-          );
-        }
-
-        return (
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 transition-colors text-white rounded-xl px-4 py-3.5 text-sm font-semibold disabled:opacity-60"
-              disabled={isDisbursementLoading}
-              onClick={async () => {
-                if (isDisbursementLoading) return;
-                setIsDisbursementLoading(true);
-                try {
-                  await loansAPI.requestDisbursement(activeLoan.id);
-                  setDisbursementJustRequested(true);
-                  showToast(
-                    "Disbursement request sent! Admin will process it shortly.",
-                    "success",
-                  );
-                } catch (err) {
-                  showToast(
-                    err?.message ||
-                      "Failed to request disbursement. Please try again.",
-                    "error",
-                  );
-                } finally {
-                  setIsDisbursementLoading(false);
-                }
-              }}
-            >
-              {isDisbursementLoading ? "Sending…" : "💰 Request Disbursement"}
-            </button>
-            <button
-              className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3.5 text-sm font-semibold"
-              onClick={() => navigate("/history")}
-            >
-              📋 View Details
-            </button>
-          </div>
-        );
-      })()}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <span className="text-sm font-semibold text-amber-700">
+            Disbursement In Progress
+          </span>
+        </div>
+        <p className="text-xs text-amber-600">
+          Your loan has been approved and is being processed for disbursement.
+          No action is needed from you. We will notify you once funds are sent.
+        </p>
+        <button
+          className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3 text-sm font-semibold"
+          onClick={() => navigate("/history")}
+        >
+          📋 View Details
+        </button>
+      </div>
     </>
   );
 
@@ -642,35 +588,8 @@ const LoanApplication = () => {
     </>
   );
 
-  // Disbursed loan screen — customer confirms receipt; admin can activate anytime (confirmation is a courtesy)
+  // Disbursed loan screen — admin confirms receipt and activates.
   const renderDisbursedScreen = () => {
-    const alreadyConfirmed =
-      receiptJustConfirmed ||
-      (activeLoan?.adminNotes || []).some(
-        (n) => n.type === "receipt_confirmed",
-      );
-
-    const handleConfirmReceipt = async () => {
-      if (confirmReceiptLoading) return;
-      setConfirmReceiptLoading(true);
-      setConfirmReceiptError(null);
-      try {
-        await loansAPI.confirmReceipt(activeLoan.id);
-        setReceiptJustConfirmed(true);
-        showToast(
-          "Receipt confirmed! The admin will activate your loan shortly.",
-          "success",
-        );
-      } catch (err) {
-        const msg =
-          err?.message || "Failed to confirm receipt. Please try again.";
-        setConfirmReceiptError(msg);
-        showToast(msg, "error");
-      } finally {
-        setConfirmReceiptLoading(false);
-      }
-    };
-
     return (
       <>
         {/* Status Header */}
@@ -732,77 +651,15 @@ const LoanApplication = () => {
           </div>
         </div>
 
-        {/* Receipt Confirmation */}
-        {alreadyConfirmed ? (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-                <span className="text-white text-sm font-bold">✓</span>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-emerald-700">
-                  Receipt Confirmed
-                </p>
-                <p className="text-xs text-emerald-600 mt-0.5">
-                  Our team has been notified and will activate your loan
-                  shortly. You will receive a notification when it's active.
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-800 mb-1">
-                Have you received your funds?
-              </p>
-              <p className="text-xs text-gray-500">
-                Check your mobile money wallet. Once funds arrive, tap the
-                button below to notify us so we can activate your loan.
-              </p>
-            </div>
-
-            {/* Persistent inline error banner */}
-            {confirmReceiptError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
-                <span className="text-red-500 text-sm flex-shrink-0 mt-0.5">
-                  ✕
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-red-700">
-                    Could not confirm receipt
-                  </p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    {confirmReceiptError}
-                  </p>
-                  <p className="text-xs text-red-500 mt-1">
-                    Please try again. If the problem persists, contact support.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <button
-              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] transition-all text-white rounded-xl px-4 py-3.5 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
-              disabled={confirmReceiptLoading}
-              onClick={handleConfirmReceipt}
-            >
-              {confirmReceiptLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Confirming…
-                </>
-              ) : (
-                "✅  Yes, I've Received My Funds"
-              )}
-            </button>
-
-            <p className="text-[11px] text-gray-400 text-center">
-              Haven't received it yet? Wait a few minutes and check your wallet.
-              Contact support if funds don't arrive within 24 hours.
-            </p>
-          </div>
-        )}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-2">
+          <p className="text-sm font-semibold text-gray-800">
+            Funds sent — awaiting activation
+          </p>
+          <p className="text-xs text-gray-500">
+            Our operations team will confirm delivery and activate your loan.
+            Once activated, repayment countdown starts automatically.
+          </p>
+        </div>
 
         <button
           className="w-full border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors rounded-xl px-4 py-3 text-sm font-semibold"
@@ -1117,8 +974,9 @@ const LoanApplication = () => {
                   type="tel"
                   className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={mobileNumber}
-                  onChange={(e) => setMobileNumber(e.target.value)}
-                  placeholder="e.g., 0241234567"
+                  readOnly
+                  disabled
+                  placeholder="Auto-filled from your profile"
                   maxLength="10"
                 />
               </div>
@@ -1398,6 +1256,10 @@ const LoanApplication = () => {
   };
 
   const handleMakePayment = async () => {
+    if (user?.phoneNumber) {
+      setMobileNumber(user.phoneNumber);
+    }
+
     // Fetch latest payment history when opening the modal
     try {
       const historyResponse = await paymentsAPI.getPaymentHistory(1, 5);
@@ -1420,18 +1282,26 @@ const LoanApplication = () => {
 
   const [paymentType, setPaymentType] = useState("full");
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
+  const [mobileNumber, setMobileNumber] = useState(user?.phoneNumber || "");
   const [selectedProvider, setSelectedProvider] = useState("MTN");
 
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
+  useEffect(() => {
+    if (user?.phoneNumber) {
+      setMobileNumber(user.phoneNumber);
+    }
+  }, [user?.phoneNumber]);
+
   const handlePaymentSubmit = async () => {
     const currentBalance = remainingBalance || 0;
     const amount =
-      paymentType === "full" ? currentBalance : parseFloat(paymentAmount);
+      paymentType === "full"
+        ? currentBalance
+        : parseFloat(remainingBalance || 0);
 
     // Validation
-    if (paymentType === "partial" && (!paymentAmount || amount <= 0)) {
+    if (paymentType === "partial" && amount <= 0) {
       showToast("Please enter a valid payment amount.", "error");
       return;
     }
@@ -1479,7 +1349,6 @@ const LoanApplication = () => {
         // Close modal and reset form
         setShowPaymentModal(false);
         setPaymentAmount("");
-        setMobileNumber("");
 
         // Refresh loan data to get updated balance
         await checkActiveLoan();
@@ -2048,12 +1917,14 @@ const LoanApplication = () => {
                 </label>
                 <input
                   type="tel"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
                   value={mobileNumber}
-                  onChange={(e) => setMobileNumber(e.target.value)}
-                  placeholder="e.g., 0241234567"
+                  disabled
                   maxLength="10"
                 />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  This number is loaded from your verified profile and cannot be changed here.
+                </p>
               </div>
               {paymentHistory.length > 0 && (
                 <div>

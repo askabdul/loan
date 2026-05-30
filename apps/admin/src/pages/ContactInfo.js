@@ -2,31 +2,12 @@ import React, { useState, useEffect } from "react";
 import { FiPhone, FiRefreshCw, FiEdit3, FiSave, FiX } from "react-icons/fi";
 import apiService from "../services/api";
 
-const CONTACT_INFO_KEYS = ["contact_info_main", "contact_info"];
-
 const ContactInfo = () => {
   const [contactData, setContactData] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [isEditing, setIsEditing] = useState({});
-
-  const extractContentItems = (response) => {
-    if (Array.isArray(response)) return response;
-    if (Array.isArray(response?.data)) return response.data;
-    if (Array.isArray(response?.data?.content)) return response.data.content;
-    return [];
-  };
-
-  const findContactItem = (items) => {
-    const contactItems = items.filter((item) => item?.type === "contact_info");
-    if (!contactItems.length) return null;
-
-    return (
-      contactItems.find((item) => CONTACT_INFO_KEYS.includes(item?.key)) ||
-      contactItems[0]
-    );
-  };
 
   // Configuration for contact fields
   const contactConfig = {
@@ -101,10 +82,30 @@ const ContactInfo = () => {
   const fetchContactData = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getAllContent();
-      const items = extractContentItems(response);
-      const contactItem = findContactItem(items);
-      setContactData(contactItem?.content || {});
+      const response = await apiService.getConfiguration();
+      const configRows = Array.isArray(response?.data)
+        ? response.data
+        : Object.entries(response?.config || {}).map(([key, value]) => ({ key, value }));
+
+      const mapped = {
+        support_phone: configRows.find((item) => item.key === "support_phone")?.value || "",
+        support_email: configRows.find((item) => item.key === "support_email")?.value || "",
+        support_whatsapp:
+          configRows.find((item) => item.key === "support_whatsapp")?.value || "",
+        office_address: configRows.find((item) => item.key === "office_address")?.value || "",
+        business_hours: configRows.find((item) => item.key === "business_hours")?.value || "",
+        emergency_contact:
+          configRows.find((item) => item.key === "emergency_contact")?.value || "",
+        website_url: configRows.find((item) => item.key === "website_url")?.value || "",
+        social_media_facebook:
+          configRows.find((item) => item.key === "social_media_facebook")?.value || "",
+        social_media_twitter:
+          configRows.find((item) => item.key === "social_media_twitter")?.value || "",
+        social_media_linkedin:
+          configRows.find((item) => item.key === "social_media_linkedin")?.value || "",
+      };
+
+      setContactData(mapped);
     } catch (error) {
       console.error("Error fetching contact data:", error);
       setMessage("Failed to load contact information");
@@ -117,25 +118,9 @@ const ContactInfo = () => {
     try {
       setSaving(true);
       const mergedContent = { ...contactData, ...updates };
-      const response = await apiService.getAllContent();
-      const items = extractContentItems(response);
-      const contactItem = findContactItem(items);
 
-      if (contactItem?.id) {
-        await apiService.updateContent(contactItem.id, {
-          content: mergedContent,
-          title: contactItem.title || "Contact Information",
-          isActive: true,
-        });
-      } else {
-        await apiService.createContent({
-          key: CONTACT_INFO_KEYS[1],
-          type: "contact_info",
-          title: "Contact Information",
-          content: mergedContent,
-          sortOrder: 1,
-          isActive: true,
-        });
+      for (const [key, value] of Object.entries(updates)) {
+        await apiService.updateConfig(key, value);
       }
 
       setContactData(mergedContent);

@@ -5,24 +5,73 @@
  */
 
 const express = require("express");
-const { Op, fn, col } = require("sequelize");
+const { Op, fn, col, literal } = require("sequelize");
 const { adminAuth } = require("../middleware/auth");
-const { requireMenuAccess, requireSubMenuAccess } = require("../middleware/roleAuth");
+const {
+  requireMenuAccess,
+  requireSubMenuAccess,
+  requireAnySubMenuAccess,
+} = require("../middleware/roleAuth");
 const { Loan, User, Admin, Payment, Role } = require("../models");
 
 const router = express.Router();
+
+const LEAD_ASSIGNMENT_ROLES = new Set([
+  "super-admin",
+  "admin",
+  "local-manager",
+  "precollection-lead",
+]);
+
+const getRoleName = (admin) => admin?.Role?.name || admin?.role?.name;
+
+const canManageAssignments = (admin) =>
+  LEAD_ASSIGNMENT_ROLES.has(getRoleName(admin));
+
+const RESERVE_HOLD_DAYS = 10;
+const RESERVE_HOLD_MS = RESERVE_HOLD_DAYS * 24 * 60 * 60 * 1000;
 
 router.use(adminAuth);
 router.use(requireMenuAccess("preCollection"));
 
 // ── GET /cases ────────────────────────────────────────────────────────────────
-router.get("/cases", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
+router.get(
+  "/cases",
+  requireAnySubMenuAccess([
+    { menu: "preCollection", subMenu: "list" },
+    { menu: "preCollection", subMenu: "allList" },
+  ]),
+  async (req, res) => {
   try {
-    const { status, officerId, page = 1, limit = 20 } = req.query;
-    const where = { status: "active" };
+    const { status, officerId, page = 1, limit = 20, search } = req.query;
+    const where = {};
     const adminRoleName = req.admin?.Role?.name || req.admin?.role?.name;
 
-    if (status) where.precollectionStatus = status;
+    const isCompletedTab = status === "completed";
+    if (isCompletedTab) {
+      where[Op.or] = [
+        { precollectionStatus: "completed" },
+        { status: "completed" },
+      ];
+    } else if (!status) {
+      where.status = { [Op.in]: ["active", "completed"] };
+    } else {
+      where.status = "active";
+      if (status) where.precollectionStatus = status;
+    }
+
+    let userWhere = {};
+    if (search) {
+      const s = `%${search}%`;
+      userWhere = {
+        [Op.or]: [
+          { firstName: { [Op.iLike]: s } },
+          { lastName: { [Op.iLike]: s } },
+          { phoneNumber: { [Op.iLike]: s } },
+        ],
+      };
+      where[Op.or] = [...(where[Op.or] || []), { loanId: { [Op.iLike]: s } }];
+    }
 
     // Officers see only their own cases
     if (adminRoleName === "precollection-officer") {
@@ -38,6 +87,9 @@ router.get("/cases", requireSubMenuAccess("preCollection", "list"), async (req, 
           model: User,
           as: "User",
           attributes: ["id", "userId", "firstName", "lastName", "phoneNumber"],
+          ...(Object.keys(userWhere).length
+            ? { where: userWhere, required: true }
+            : {}),
         },
         {
           model: Admin,
@@ -60,11 +112,78 @@ router.get("/cases", requireSubMenuAccess("preCollection", "list"), async (req, 
     console.error("Pre-collection cases error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
-});
+  },
+);
+
+// ── PATCH /cases/:id/status ───────────────────────────────────────────────────
+router.patch(
+  "/cases/:id/status",
+  requireAnySubMenuAccess([
+    { menu: "preCollection", subMenu: "list" },
+    { menu: "preCollection", subMenu: "allList" },
+  ]),
+  async (req, res) => {
+    try {
+      const { status } = req.body;
+      const allowed = [
+        "pending-assignment",
+        "assigned",
+        "processed",
+        "hung-up",
+        "completed",
+      ];
+      if (!allowed.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid pre-collection status",
+        });
+      }
+
+      const loan = await Loan.findByPk(req.params.id);
+      if (!loan) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Loan not found" });
+      }
+
+      const roleName = getRoleName(req.admin);
+      const canUpdateAny = canManageAssignments(req.admin);
+      const canUpdateOwn =
+        roleName === "precollection-officer" &&
+        loan.precollectionOfficerId === req.admin.id;
+
+      if (!canUpdateAny && !canUpdateOwn) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update statuses for cases assigned to you",
+        });
+      }
+
+      const updates = { precollectionStatus: status };
+      if (status !== "hung-up") {
+        updates.reservedAt = null;
+        updates.reservedByOfficerId = null;
+      }
+
+      await loan.update(updates);
+      res.json({ success: true, loan });
+    } catch (error) {
+      console.error("Update pre-collection status error:", error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  },
+);
 
 // ── PATCH /cases/:id/assign ───────────────────────────────────────────────────
 router.patch("/cases/:id/assign", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
+    if (!canManageAssignments(req.admin)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only pre-collection leads can assign cases",
+      });
+    }
+
     const { officerId } = req.body;
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -84,7 +203,13 @@ router.patch("/cases/:id/assign", requireSubMenuAccess("preCollection", "list"),
 });
 
 // ── PATCH /cases/:id/unassign ─────────────────────────────────────────────────
-router.patch("/cases/:id/unassign", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
+router.patch(
+  "/cases/:id/unassign",
+  requireAnySubMenuAccess([
+    { menu: "preCollection", subMenu: "list" },
+    { menu: "preCollection", subMenu: "allList" },
+  ]),
+  async (req, res) => {
   try {
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -92,25 +217,77 @@ router.patch("/cases/:id/unassign", requireSubMenuAccess("preCollection", "list"
         .status(404)
         .json({ success: false, message: "Loan not found" });
 
+    const roleName = getRoleName(req.admin);
+    const isLead = canManageAssignments(req.admin);
+    const isReservedCase = loan.precollectionStatus === "hung-up";
+
+    if (isReservedCase) {
+      const reservedAtTs = loan.reservedAt ? new Date(loan.reservedAt).getTime() : 0;
+      const reserveAgeMs = reservedAtTs ? Date.now() - reservedAtTs : 0;
+      const isReserveExpired = reserveAgeMs >= RESERVE_HOLD_MS;
+      const isReserver = loan.reservedByOfficerId === req.admin.id;
+
+      if (!isReserver && !(isLead && isReserveExpired)) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Only the officer who reserved this case can release it before 10 days. Admin/leads can release after 10 days.",
+        });
+      }
+    } else {
+      const canUnassignOwnAssigned =
+        roleName === "precollection-officer" &&
+        loan.precollectionOfficerId === req.admin.id;
+
+      if (!isLead && !canUnassignOwnAssigned) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only unassign your own assigned cases",
+        });
+      }
+    }
+
     await loan.update({
       precollectionOfficerId: null,
       precollectionStatus: "pending-assignment",
+      reservedAt: null,
+      reservedByOfficerId: null,
     });
     res.json({ success: true, loan });
   } catch (error) {
     console.error("Unassign pre-collection error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
-});
+  },
+);
 
 // ── PATCH /cases/:id/reserve ──────────────────────────────────────────────────
-router.patch("/cases/:id/reserve", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
+router.patch(
+  "/cases/:id/reserve",
+  requireAnySubMenuAccess([
+    { menu: "preCollection", subMenu: "list" },
+    { menu: "preCollection", subMenu: "allList" },
+  ]),
+  async (req, res) => {
   try {
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
       return res
         .status(404)
         .json({ success: false, message: "Loan not found" });
+
+    const roleName = getRoleName(req.admin);
+    const canReserveAny = canManageAssignments(req.admin);
+    const canReserveOwn =
+      roleName === "precollection-officer" &&
+      loan.precollectionOfficerId === req.admin.id;
+
+    if (!canReserveAny && !canReserveOwn) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only reserve cases assigned to you",
+      });
+    }
 
     await loan.update({
       precollectionStatus: "hung-up",
@@ -122,11 +299,19 @@ router.patch("/cases/:id/reserve", requireSubMenuAccess("preCollection", "list")
     console.error("Reserve pre-collection error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
-});
+  },
+);
 
 // ── POST /bulk-assign ─────────────────────────────────────────────────────────
 router.post("/bulk-assign", requireSubMenuAccess("preCollection", "list"), async (req, res) => {
   try {
+    if (!canManageAssignments(req.admin)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only pre-collection leads can bulk assign cases",
+      });
+    }
+
     const { loanIds, officerIds, mode = "equal" } = req.body;
     if (
       !Array.isArray(loanIds) ||
@@ -209,8 +394,9 @@ router.get("/repayments", requireSubMenuAccess("preCollection", "paymentRecord")
           as: "Loan",
           where: {
             ...loanWhere,
-            // Payment date before due date = early payment
-            dueDate: { [Op.gt]: fn("NOW") },
+            [Op.and]: literal(
+              `"Payment"."completed_at" < COALESCE("Loan"."extended_due_date", "Loan"."due_date")`,
+            ),
           },
           attributes: [
             "id",

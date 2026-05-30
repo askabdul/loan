@@ -52,7 +52,7 @@ const StatusBadge = ({ active }) =>
     </span>
   );
 
-const PermGrid = ({ entries }) => (
+const PermGrid = ({ entries, path = [], getLabel }) => (
   <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
     {entries.map(([key, val]) => (
       <div
@@ -63,7 +63,7 @@ const PermGrid = ({ entries }) => (
             : "bg-gray-50 border-gray-100 text-gray-400"
         }`}
       >
-        <span>{camelToWords(key)}</span>
+        <span>{getLabel ? getLabel(path, key) : camelToWords(key)}</span>
         {val ? (
           <span className="text-emerald-500 text-sm">✓</span>
         ) : (
@@ -74,7 +74,7 @@ const PermGrid = ({ entries }) => (
   </div>
 );
 
-const PermCheckboxGroup = ({ entries, onChange }) => (
+const PermCheckboxGroup = ({ entries, onChange, path = [], getLabel }) => (
   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
     {entries.map(([key, val]) => (
       <label
@@ -91,13 +91,19 @@ const PermCheckboxGroup = ({ entries, onChange }) => (
           onChange={(e) => onChange(key, e.target.checked)}
           className="accent-blue-600 flex-shrink-0"
         />
-        {camelToWords(key)}
+        {getLabel ? getLabel(path, key) : camelToWords(key)}
       </label>
     ))}
   </div>
 );
 
-const PermissionSectionEditor = ({ title, tree, onChange, path = [] }) => {
+const PermissionSectionEditor = ({
+  title,
+  tree,
+  onChange,
+  path = [],
+  getLabel,
+}) => {
   const entries = Object.entries(tree || {});
   if (!entries.length) return null;
 
@@ -129,7 +135,7 @@ const PermissionSectionEditor = ({ title, tree, onChange, path = [] }) => {
                 onChange={(e) => onChange([...path, key], e.target.checked)}
                 className="accent-blue-600 flex-shrink-0"
               />
-              {camelToWords(key)}
+              {getLabel ? getLabel(path, key) : camelToWords(key)}
             </label>
           ))}
         </div>
@@ -141,10 +147,11 @@ const PermissionSectionEditor = ({ title, tree, onChange, path = [] }) => {
           className="bg-gray-50 border border-gray-100 rounded-xl p-3"
         >
           <PermissionSectionEditor
-            title={camelToWords(key)}
+            title={getLabel ? getLabel(path, key) : camelToWords(key)}
             tree={value}
             onChange={onChange}
             path={[...path, key]}
+            getLabel={getLabel}
           />
         </div>
       ))}
@@ -152,7 +159,7 @@ const PermissionSectionEditor = ({ title, tree, onChange, path = [] }) => {
   );
 };
 
-const PermissionSectionView = ({ title, tree }) => {
+const PermissionSectionView = ({ title, tree, path = [], getLabel }) => {
   const entries = Object.entries(tree || {});
   if (!entries.length) return null;
 
@@ -167,14 +174,21 @@ const PermissionSectionView = ({ title, tree }) => {
         </p>
       )}
 
-      {leafEntries.length > 0 && <PermGrid entries={leafEntries} />}
+      {leafEntries.length > 0 && (
+        <PermGrid entries={leafEntries} path={path} getLabel={getLabel} />
+      )}
 
       {nestedEntries.map(([key, value]) => (
         <div
           key={key}
           className="bg-gray-50 border border-gray-100 rounded-xl p-3"
         >
-          <PermissionSectionView title={camelToWords(key)} tree={value} />
+          <PermissionSectionView
+            title={getLabel ? getLabel(path, key) : camelToWords(key)}
+            tree={value}
+            path={[...path, key]}
+            getLabel={getLabel}
+          />
         </div>
       ))}
     </div>
@@ -237,153 +251,730 @@ const ModalHeader = ({ title, subtitle, onClose }) => (
   </div>
 );
 
-// ── Default form state ────────────────────────────────────────────────────────
-const permissionTemplate = {
-  menus: {
-    dashboard: false,
-    user: false,
-    order: false,
-    fundManagement: false,
-    creditReview: false,
-    collection: false,
-    preCollection: false,
-    userManagement: false,
-    appConfiguration: false,
-    dataStatistics: false,
-    system: false,
-    marketing: false,
-    notificationManagement: false,
-    contentManagement: false,
-    systemConfig: false,
-    reports: false,
-    adminManagement: false,
-  },
+// ── Centralized permission catalog used by Role Management ───────────────────
+const PERMISSION_CATALOG = {
+  menus: [
+    "user",
+    "userManagement",
+    "order",
+    "fundManagement",
+    "creditReview",
+    "preCollection",
+    "collection",
+    "appConfiguration",
+    "dataStatistics",
+    "system",
+    "contentManagement",
+    "notificationManagement",
+    "marketing",
+    "dashboard",
+    "reports",
+  ],
   subMenus: {
-    user: {
-      listOfUsers: false,
-      findOne: false,
-      manualRegistration: false,
-      userManagement: false,
-      levelAssignment: false,
-    },
-    order: {
-      orderList: false,
-      orderLending: false,
-      orderRepayment: false,
-      reviewRepayment: false,
-      extensionOrder: false,
-      loanDetails: false,
-    },
-    fundManagement: {
-      paymentManagement: false,
-    },
-    creditReview: {
-      assign: false,
-      list: false,
-      count: false,
-    },
-    preCollection: {
-      allList: false,
-      list: false,
-      rank1: false,
-      rank2: false,
-      paymentRecord: false,
-    },
-    collection: {
-      list: false,
-      rank1: false,
-      rank2: false,
-      paymentRecord: false,
-      officers: false,
-    },
-    appConfiguration: {
-      generalSettings: false,
-      loanSettings: false,
-      loanConfiguration: false,
-      loanRateCalculation: false,
-      appBranding: false,
-      contactInfo: false,
-    },
-    dataStatistics: {
-      dashboard: false,
-    },
-    system: {
-      adminManagement: false,
-      roleManagement: false,
-    },
+    user: [
+      "listOfUsers",
+      "findOne",
+      "manualRegistration",
+      "userManagement",
+      "levelAssignment",
+    ],
+    order: [
+      "orderList",
+      "orderLending",
+      "orderRepayment",
+      "reviewRepayment",
+      "extensionOrder",
+      "loanDetails",
+      "paymentFailed",
+      "repaymentPlan",
+      "repaymentDetails",
+      "repayPending",
+      "ussd",
+      "callbackOrder",
+      "cantSettled",
+    ],
+    fundManagement: [
+      "paymentManagement",
+      "paymentOrder",
+      "paymentReview",
+      "billVerification",
+      "airtime",
+      "airtimeReview",
+      "batchPaymentApply",
+      "airtimeStat",
+    ],
+    creditReview: ["assign", "list", "count"],
+    preCollection: [
+      "allList",
+      "list",
+      "assign",
+      "repayment",
+      "rank1",
+      "rank2",
+      "paymentRecord",
+      "shiftList",
+      "monitorCenter",
+      "colRate",
+      "appUsage",
+      "monitorCenter2",
+      "handCases",
+    ],
+    collection: [
+      "list",
+      "assign",
+      "repayment",
+      "rank1",
+      "rank2",
+      "paymentRecord",
+      "officers",
+      "shiftList",
+      "monitorCenter",
+      "appUsage",
+      "monitorCenter2",
+      "handCases",
+    ],
+    appConfiguration: [
+      "generalSettings",
+      "loanSettings",
+      "loanConfiguration",
+      "loanRateCalculation",
+      "appBranding",
+      "contactInfo",
+      "faq",
+      "termsConditions",
+    ],
+    dataStatistics: ["dashboard"],
+    system: ["adminManagement", "roleManagement", "serverLogs", "bin"],
   },
-  dataAccess: {
-    viewAllLoans: false,
-    viewAssignedLoans: false,
-    viewAllUsers: false,
-    editUserData: false,
-    approveLoans: false,
-    rejectLoans: false,
-    assignLoans: false,
-    exportData: false,
-    "users.personalInfo": false,
-    "users.phone": false,
-    "users.financialInfo": false,
-    "users.loanHistory": false,
-    "users.workInfo": false,
-    "loans.basic": false,
-    "loans.amount": false,
-    "loans.terms": false,
-    "loans.history": false,
-    "loans.documents": false,
-    "payments.amount": false,
-    "payments.provider": false,
-    "payments.details": false,
-  },
-  actions: {
-    createAdmin: false,
-    editAdmin: false,
-    deleteAdmin: false,
-    manageRoles: false,
-    systemConfig: false,
-    approveLoan: false,
-    rejectLoan: false,
-    assignLoan: false,
-    createRole: false,
-    editRole: false,
-    deleteRole: false,
-    resetPassword: false,
-  },
+  dataAccess: [
+    "viewAllLoans",
+    "viewAssignedLoans",
+    "viewAllUsers",
+    "editUserData",
+    "approveLoans",
+    "rejectLoans",
+    "assignLoans",
+    "exportData",
+    "viewPayments",
+    "viewFinancialData",
+    "configurations",
+    "content",
+    "loanAnalytics",
+    "userAnalytics",
+    "payments",
+    "viewReports",
+    "viewStatistics",
+    "viewNotifications",
+    "editNotifications",
+    "viewConfig",
+    "editConfig",
+    "viewSystemLogs",
+    "viewAuditTrail",
+    "manageSystemConfig",
+    "manageUserRoles",
+    "users.personalInfo",
+    "users.phone",
+    "users.financialInfo",
+    "users.loanHistory",
+    "users.workInfo",
+    "loans.basic",
+    "loans.amount",
+    "loans.terms",
+    "loans.history",
+    "loans.documents",
+    "payments.amount",
+    "payments.provider",
+    "payments.details",
+  ],
+  actions: [
+    "createAdmin",
+    "editAdmin",
+    "deleteAdmin",
+    "manageRoles",
+    "createRole",
+    "editRole",
+    "deleteRole",
+    "manageUserRoles",
+    "createUser",
+    "createUsers",
+    "viewUsers",
+    "editUsers",
+    "edit_user",
+    "resetPin",
+    "resetPassword",
+    "reset_password",
+    "toggleUserStatus",
+    "updateUserLevel",
+    "assignLoan",
+    "assignLoans",
+    "reassignLoan",
+    "updateLoanStatus",
+    "approveLoans",
+    "rejectLoans",
+    "hangUpLoans",
+    "approveLoan",
+    "rejectLoan",
+    "hangUpApplication",
+    "updateLoan",
+    "viewLoans",
+    "managePayments",
+    "loan_clearance",
+    "manageNotifications",
+    "updateConfiguration",
+    "updateConfig",
+    "editConfig",
+    "systemConfig",
+    "manageSystemConfig",
+    "createContent",
+    "editContent",
+    "updateContent",
+    "deleteContent",
+    "viewReports",
+    "exportReports",
+  ],
   uiElements: {
-    buttons: {
-      createAdmin: false,
-      editAdmin: false,
-      deleteAdmin: false,
-      assignCase: false,
-      bulkAssign: false,
-      exportData: false,
-    },
-    tables: {
-      users: false,
-      loans: false,
-      payments: false,
-      officers: false,
-      roles: false,
-    },
-    forms: {
-      userEdit: false,
-      roleEdit: false,
-      loanApproval: false,
-      paymentReview: false,
-    },
-    modals: {
-      userDetails: false,
-      roleDetails: false,
-      assignment: false,
-    },
+    buttons: [
+      "createAdmin",
+      "editAdmin",
+      "deleteAdmin",
+      "assignCase",
+      "bulkAssign",
+      "exportData",
+    ],
+    tables: ["users", "loans", "payments", "officers", "roles"],
+    forms: ["userEdit", "roleEdit", "loanApproval", "paymentReview"],
+    modals: ["userDetails", "roleDetails", "assignment"],
+    navigation: ["sidebar", "topbar", "breadcrumbs"],
+    widgets: ["dashboardStats", "performanceChart", "alertsPanel"],
   },
-  bulkActions: {
-    bulkAssign: false,
-    bulkUnassign: false,
-    bulkDeactivate: false,
-    bulkExport: false,
-  },
+  bulkActions: ["bulkAssign", "bulkUnassign", "bulkDeactivate", "bulkExport"],
 };
+
+const PERMISSION_LABELS = {
+  "menus.user": "Users",
+  "menus.userManagement": "User Management",
+  "menus.order": "Orders",
+  "menus.fundManagement": "Fund Management",
+  "menus.creditReview": "Credit Review",
+  "menus.preCollection": "Pre-Collection",
+  "menus.collection": "Collection",
+  "menus.appConfiguration": "App Configuration",
+  "menus.dataStatistics": "Data Statistics",
+  "menus.system": "System",
+  "menus.contentManagement": "Content Management",
+  "menus.notificationManagement": "Notification Management",
+  "menus.marketing": "Marketing",
+  "menus.dashboard": "Dashboard",
+  "menus.reports": "Reports",
+  "subMenus.user": "Users",
+  "subMenus.order": "Orders",
+  "subMenus.creditReview": "Credit Review",
+  "subMenus.preCollection": "Pre-Collection",
+  "subMenus.collection": "Collection",
+  "subMenus.appConfiguration": "App Configuration",
+  "subMenus.fundManagement": "Fund Management",
+  "subMenus.dataStatistics": "Data Statistics",
+  "subMenus.system": "System",
+  "subMenus.preCollection.allList": "Shiftiest / All List",
+  "subMenus.preCollection.list": "Pre-Assignment List",
+  "subMenus.preCollection.paymentRecord": "Pre-Repayment Record",
+  "subMenus.creditReview.list": "Review List",
+  "subMenus.creditReview.count": "Review Statistics",
+  "dataAccess.viewAllLoans":
+    "[Loan tables: Credit Review / Orders / Collection / Pre-Collection] View All Loans",
+  "dataAccess.viewAssignedLoans":
+    "[Loan tables: officer views] View Only Assigned Loans",
+  "dataAccess.viewAllUsers":
+    "[Users module + Dashboard cards] View All Users",
+  "dataAccess.editUserData":
+    "[Users > Management forms] Edit User Data",
+  "dataAccess.approveLoans":
+    "[Credit Review operations column] Approve Loans",
+  "dataAccess.rejectLoans":
+    "[Credit Review operations column] Reject Loans",
+  "dataAccess.assignLoans":
+    "[Credit Review / Pre-Collection / Collection assignment tables] Assign Loans",
+  "dataAccess.exportData": "[List pages + reports] Export Data",
+  "dataAccess.viewPayments":
+    "[Fund Management / dashboard financial cards] View Payments",
+  "dataAccess.viewFinancialData":
+    "[Dashboard financial cards + analytics] View Financial Data",
+  "dataAccess.configurations":
+    "[App Configuration endpoints/forms] View Configurations",
+  "dataAccess.content": "[Content Management table] View Content",
+  "dataAccess.loanAnalytics":
+    "[Data Statistics pages] View Loan Analytics",
+  "dataAccess.userAnalytics":
+    "[Data Statistics pages] View User Analytics",
+  "dataAccess.payments":
+    "[Fund Management endpoints] View Payment Data",
+  "dataAccess.viewReports": "[Reports pages] View Reports",
+  "dataAccess.viewStatistics": "[Analytics pages] View Statistics",
+  "dataAccess.viewNotifications":
+    "[Notifications module] View Notifications",
+  "dataAccess.editNotifications":
+    "[Notifications module] Edit Notifications",
+  "dataAccess.viewConfig": "[Configuration pages] View Config",
+  "dataAccess.editConfig": "[Configuration forms] Edit Config",
+  "dataAccess.viewSystemLogs": "[System > Server Logs] View System Logs",
+  "dataAccess.viewAuditTrail": "[System > Audit Trails] View Audit Trail",
+  "dataAccess.manageSystemConfig":
+    "[System + App Configuration] Manage System Config",
+  "dataAccess.manageUserRoles":
+    "[System > Role Management] Manage User-Role Mapping",
+  "dataAccess.users.personalInfo":
+    "[User Detail Modal > Personal tab] View Personal Info",
+  "dataAccess.users.phone": "[User tables/details] View Phone Number",
+  "dataAccess.users.financialInfo":
+    "[User Detail Modal > Financial tab] View Financial Info",
+  "dataAccess.users.loanHistory":
+    "[User Detail Modal > Loan History tab] View Loan History",
+  "dataAccess.users.workInfo":
+    "[User Detail Modal > Work tab] View Work Info",
+  "dataAccess.loans.basic": "[Loan tables/details] View Basic Loan Fields",
+  "dataAccess.loans.amount": "[Loan tables/details] View Loan Amount Fields",
+  "dataAccess.loans.terms": "[Loan details] View Loan Terms",
+  "dataAccess.loans.history": "[Loan details] View Loan History",
+  "dataAccess.loans.documents":
+    "[Loan details] View Loan Documents / Uploads",
+  "dataAccess.payments.amount":
+    "[Payment tables/details] View Payment Amount",
+  "dataAccess.payments.provider":
+    "[Payment tables/details] View Payment Provider",
+  "dataAccess.payments.details":
+    "[Payment tables/details] View Full Payment Details",
+  "actions.updateLoanStatus":
+    "[Credit Review List / Detail Modal / Order Lending] Change Loan Status & Decisions",
+  "actions.assignLoan":
+    "[Credit Review Assign + List / Pre-Collection / Collection] Assign or Reassign Cases",
+  "actions.manageRoles":
+    "[System > Role Management table] Create/Edit/Delete Roles",
+  "actions.editUsers":
+    "[Users > List / Find / Management table] Edit User Records",
+  "actions.edit_user":
+    "[Users > List / Find / Management table] Edit User Records",
+  "actions.createUser":
+    "[Users > Manual Registration table/forms] Create User Records",
+  "actions.createUsers":
+    "[Users > Manual Registration table/forms] Create User Records",
+  "actions.approveLoans":
+    "[Credit Review operations column] Approve Loan",
+  "actions.rejectLoans":
+    "[Credit Review operations column] Reject Loan",
+  "actions.hangUpLoans":
+    "[Credit Review operations column] Hang Up Loan",
+  "actions.approveLoan":
+    "[Credit Review operations column] Approve Loan",
+  "actions.rejectLoan":
+    "[Credit Review operations column] Reject Loan",
+  "actions.hangUpApplication":
+    "[Credit Review operations column] Hang Up Loan",
+  "actions.viewLoans":
+    "[Credit Review / Order / Collection tables] View Loan Records",
+  "actions.managePayments":
+    "[Fund Management > Payment table] Manage Payments",
+  "actions.loan_clearance":
+    "[Order Repayment + Review Payment tables] Process Loan Clearance",
+  "actions.loanClearance":
+    "[Order Repayment + Review Payment tables] Process Loan Clearance",
+  "actions.manageNotifications":
+    "[Notifications table] Create/Edit/Delete Notifications",
+  "actions.createContent": "[Content table] Create Content",
+  "actions.updateContent": "[Content table] Update Content",
+  "actions.editContent": "[Content table] Update Content",
+  "actions.deleteContent": "[Content table] Delete Content",
+  "actions.viewReports":
+    "[Data Statistics / Reports tables] View Reports",
+  "actions.viewStatistics":
+    "[Data Statistics / Reports tables] View Reports",
+  "actions.updateConfiguration":
+    "[App Configuration forms] Update Configuration",
+  "actions.updateConfig":
+    "[App Configuration forms] Update Configuration",
+};
+
+const MODULE_PERMISSION_GROUPS = [
+  {
+    id: "user",
+    title: "Users",
+    description: "User list, search, registration, management and levels",
+    menuKey: "user",
+    subMenuKey: "user",
+    actionKeys: [
+      "viewUsers",
+      "createUser",
+      "editUsers",
+      "resetPin",
+      "toggleUserStatus",
+      "updateUserLevel",
+    ],
+    dataAccessKeys: [
+      "viewAllUsers",
+      "editUserData",
+      "users.personalInfo",
+      "users.phone",
+      "users.financialInfo",
+      "users.loanHistory",
+      "users.workInfo",
+    ],
+  },
+  {
+    id: "order",
+    title: "Orders",
+    description: "Order lending, repayment, extension and loan detail pages",
+    menuKey: "order",
+    subMenuKey: "order",
+    actionKeys: ["loan_clearance"],
+    dataAccessKeys: [
+      "loans.basic",
+      "loans.amount",
+      "loans.terms",
+      "loans.history",
+      "loans.documents",
+    ],
+  },
+  {
+    id: "creditReview",
+    title: "Credit Review",
+    description: "Review list, assignment and decision operations",
+    menuKey: "creditReview",
+    subMenuKey: "creditReview",
+    actionKeys: ["viewLoans", "assignLoan", "updateLoanStatus"],
+    dataAccessKeys: [
+      "viewAllLoans",
+      "viewAssignedLoans",
+      "loans.basic",
+      "loans.amount",
+      "loans.terms",
+    ],
+  },
+  {
+    id: "preCollection",
+    title: "Pre-Collection",
+    description: "Pre-assignment, shiftiest list, repayment and ranks",
+    menuKey: "preCollection",
+    subMenuKey: "preCollection",
+    actionKeys: [],
+    dataAccessKeys: ["viewAllLoans", "viewAssignedLoans"],
+  },
+  {
+    id: "collection",
+    title: "Collection",
+    description: "Overdue list, assignment, officers and ranks",
+    menuKey: "collection",
+    subMenuKey: "collection",
+    actionKeys: [],
+    dataAccessKeys: ["viewAllLoans", "viewAssignedLoans"],
+  },
+  {
+    id: "fundManagement",
+    title: "Fund Management",
+    description: "Payment management and financial operations",
+    menuKey: "fundManagement",
+    subMenuKey: "fundManagement",
+    actionKeys: ["managePayments"],
+    dataAccessKeys: [
+      "viewPayments",
+      "viewFinancialData",
+      "payments",
+      "payments.amount",
+      "payments.provider",
+      "payments.details",
+    ],
+  },
+  {
+    id: "content-notification",
+    title: "Content & Notifications",
+    description: "Content management and notification manager",
+    menuKey: "contentManagement",
+    subMenuKey: null,
+    actionKeys: [
+      "manageNotifications",
+      "createContent",
+      "updateContent",
+      "deleteContent",
+    ],
+    dataAccessKeys: ["content", "viewNotifications", "editNotifications"],
+  },
+  {
+    id: "appConfiguration",
+    title: "App Configuration",
+    description: "General settings, loan config and branding",
+    menuKey: "appConfiguration",
+    subMenuKey: "appConfiguration",
+    actionKeys: ["updateConfiguration"],
+    dataAccessKeys: ["configurations", "viewConfig", "editConfig", "manageSystemConfig"],
+  },
+  {
+    id: "dataStatistics",
+    title: "Data Statistics",
+    description: "Dashboard and analytics data",
+    menuKey: "dataStatistics",
+    subMenuKey: "dataStatistics",
+    actionKeys: ["viewReports", "exportReports"],
+    dataAccessKeys: [
+      "loanAnalytics",
+      "userAnalytics",
+      "viewReports",
+      "viewStatistics",
+      "viewFinancialData",
+    ],
+  },
+  {
+    id: "system",
+    title: "System",
+    description: "Admin management, role management and system controls",
+    menuKey: "system",
+    subMenuKey: "system",
+    actionKeys: [
+      "createAdmin",
+      "editAdmin",
+      "deleteAdmin",
+      "manageRoles",
+      "createRole",
+      "editRole",
+      "deleteRole",
+      "manageUserRoles",
+    ],
+    dataAccessKeys: [
+      "manageUserRoles",
+      "viewSystemLogs",
+      "viewAuditTrail",
+      "manageSystemConfig",
+    ],
+  },
+];
+
+const getModuleActionKeys = (moduleGroup) => moduleGroup.actionKeys || [];
+
+const ModulePermissionView = ({ permissions = {}, getLabel }) => (
+  <div className="space-y-4">
+    {MODULE_PERMISSION_GROUPS.map((moduleGroup) => {
+      const menuEntries = moduleGroup.menuKey
+        ? [[moduleGroup.menuKey, permissions.menus?.[moduleGroup.menuKey] === true]]
+        : [];
+      const subMenuEntries = moduleGroup.subMenuKey
+        ? Object.entries(permissions.subMenus?.[moduleGroup.subMenuKey] || {})
+        : [];
+      const actionEntries = getModuleActionKeys(moduleGroup)
+        .filter((key) => Object.prototype.hasOwnProperty.call(permissions.actions || {}, key))
+        .map((key) => [key, permissions.actions?.[key] === true]);
+      const dataEntries = (moduleGroup.dataAccessKeys || [])
+        .filter((key) => Object.prototype.hasOwnProperty.call(permissions.dataAccess || {}, key))
+        .map((key) => [key, permissions.dataAccess?.[key] === true]);
+
+      return (
+        <div
+          key={moduleGroup.id}
+          className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3"
+        >
+          <div>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              {moduleGroup.title}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{moduleGroup.description}</p>
+          </div>
+
+          {menuEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Menu
+              </p>
+              <PermGrid entries={menuEntries} path={["menus"]} getLabel={getLabel} />
+            </div>
+          )}
+
+          {subMenuEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Submenus
+              </p>
+              <PermGrid
+                entries={subMenuEntries}
+                path={["subMenus", moduleGroup.subMenuKey]}
+                getLabel={getLabel}
+              />
+            </div>
+          )}
+
+          {actionEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Operations & Actions
+              </p>
+              <PermGrid entries={actionEntries} path={["actions"]} getLabel={getLabel} />
+            </div>
+          )}
+
+          {dataEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Data Attributes
+              </p>
+              <PermGrid entries={dataEntries} path={["dataAccess"]} getLabel={getLabel} />
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
+
+const ModulePermissionEditor = ({ permissions = {}, onChange, getLabel }) => (
+  <div className="space-y-4">
+    {MODULE_PERMISSION_GROUPS.map((moduleGroup) => {
+      const menuEntries = moduleGroup.menuKey
+        ? [[moduleGroup.menuKey, permissions.menus?.[moduleGroup.menuKey] === true]]
+        : [];
+      const subMenuEntries = moduleGroup.subMenuKey
+        ? Object.entries(permissions.subMenus?.[moduleGroup.subMenuKey] || {})
+        : [];
+      const actionEntries = getModuleActionKeys(moduleGroup)
+        .filter((key) => Object.prototype.hasOwnProperty.call(permissions.actions || {}, key))
+        .map((key) => [key, permissions.actions?.[key] === true]);
+      const dataEntries = (moduleGroup.dataAccessKeys || [])
+        .filter((key) => Object.prototype.hasOwnProperty.call(permissions.dataAccess || {}, key))
+        .map((key) => [key, permissions.dataAccess?.[key] === true]);
+
+      const handleMenuToggle = (key, value) => {
+        onChange(["menus", key], value);
+
+        if (!value || !moduleGroup.subMenuKey) return;
+
+        const currentSubMenus = permissions.subMenus?.[moduleGroup.subMenuKey] || {};
+        const hasAnyEnabled = Object.values(currentSubMenus).some(
+          (enabled) => enabled === true,
+        );
+
+        if (!hasAnyEnabled && Object.prototype.hasOwnProperty.call(currentSubMenus, "list")) {
+          onChange(["subMenus", moduleGroup.subMenuKey, "list"], true);
+        }
+      };
+
+      return (
+        <div
+          key={moduleGroup.id}
+          className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3"
+        >
+          <div>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+              {moduleGroup.title}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">{moduleGroup.description}</p>
+          </div>
+
+          {menuEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Menu
+              </p>
+              <PermCheckboxGroup
+                entries={menuEntries}
+                onChange={handleMenuToggle}
+                path={["menus"]}
+                getLabel={getLabel}
+              />
+            </div>
+          )}
+
+          {subMenuEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Submenus
+              </p>
+              <PermCheckboxGroup
+                entries={subMenuEntries}
+                onChange={(key, value) =>
+                  onChange(["subMenus", moduleGroup.subMenuKey, key], value)
+                }
+                path={["subMenus", moduleGroup.subMenuKey]}
+                getLabel={getLabel}
+              />
+            </div>
+          )}
+
+          {actionEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Operations & Actions
+              </p>
+              <PermCheckboxGroup
+                entries={actionEntries}
+                onChange={(key, value) => onChange(["actions", key], value)}
+                path={["actions"]}
+                getLabel={getLabel}
+              />
+            </div>
+          )}
+
+          {dataEntries.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Data Attributes
+              </p>
+              <PermCheckboxGroup
+                entries={dataEntries}
+                onChange={(key, value) => onChange(["dataAccess", key], value)}
+                path={["dataAccess"]}
+                getLabel={getLabel}
+              />
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
+
+const getPermissionLabel = (path, key) => {
+  const fullPath = [...path, key].join(".");
+  return PERMISSION_LABELS[fullPath] || camelToWords(key);
+};
+
+const buildPermissionTemplate = (catalog) => {
+  const tree = {
+    menus: {},
+    subMenus: {},
+    dataAccess: {},
+    actions: {},
+    uiElements: {},
+    bulkActions: {},
+  };
+
+  (catalog.menus || []).forEach((key) => {
+    tree.menus[key] = false;
+  });
+
+  Object.entries(catalog.subMenus || {}).forEach(([menuKey, keys]) => {
+    tree.subMenus[menuKey] = {};
+    (keys || []).forEach((key) => {
+      tree.subMenus[menuKey][key] = false;
+    });
+  });
+
+  (catalog.dataAccess || []).forEach((key) => {
+    tree.dataAccess[key] = false;
+  });
+
+  (catalog.actions || []).forEach((key) => {
+    tree.actions[key] = false;
+  });
+
+  Object.entries(catalog.uiElements || {}).forEach(([section, keys]) => {
+    tree.uiElements[section] = {};
+    (keys || []).forEach((key) => {
+      tree.uiElements[section][key] = false;
+    });
+  });
+
+  (catalog.bulkActions || []).forEach((key) => {
+    tree.bulkActions[key] = false;
+  });
+
+  return tree;
+};
+
+const permissionTemplate = buildPermissionTemplate(PERMISSION_CATALOG);
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value));
 
@@ -419,6 +1010,44 @@ const normalizePermissionAliases = (permissions = {}) => {
   }
   delete next.subMenus.precollection;
 
+  next.actions = next.actions || {};
+  const actionAliasGroups = {
+    updateLoanStatus: [
+      "updateLoanStatus",
+      "approveLoans",
+      "rejectLoans",
+      "hangUpLoans",
+      "approveLoan",
+      "rejectLoan",
+      "hangUpApplication",
+      "updateLoan",
+    ],
+    assignLoan: ["assignLoan", "assignLoans", "reassignLoan"],
+    updateConfiguration: [
+      "updateConfiguration",
+      "updateConfig",
+      "editConfig",
+      "systemConfig",
+      "manageSystemConfig",
+    ],
+    manageRoles: [
+      "manageRoles",
+      "createRole",
+      "editRole",
+      "deleteRole",
+      "manageUserRoles",
+    ],
+    createUser: ["createUser", "createUsers"],
+    resetPin: ["resetPin", "resetPassword", "reset_password"],
+  };
+
+  Object.entries(actionAliasGroups).forEach(([canonical, aliases]) => {
+    const hasAnyAlias = aliases.some((alias) => Boolean(next.actions[alias]));
+    if (hasAnyAlias) {
+      next.actions[canonical] = true;
+    }
+  });
+
   return next;
 };
 
@@ -434,6 +1063,14 @@ const mergePermissionTrees = (template, existing) => {
   Object.keys(template).forEach((key) => {
     result[key] = mergePermissionTrees(template[key], existingObject?.[key]);
   });
+
+  if (existingObject) {
+    Object.keys(existingObject).forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(result, key)) {
+        result[key] = cloneDeep(existingObject[key]);
+      }
+    });
+  }
 
   return result;
 };
@@ -1090,18 +1727,25 @@ const RoleManagement = () => {
                 </p>
               </div>
             )}
+            <div className="space-y-3">
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                Module Permission Matrix (Menus, Submenus, Actions, Data)
+              </p>
+              <ModulePermissionView
+                permissions={selectedRole.permissions || {}}
+                getLabel={getPermissionLabel}
+              />
+            </div>
             {[
-              { key: "menus", label: "Menu Access" },
-              { key: "subMenus", label: "Sidebar & Submenu Access" },
-              { key: "dataAccess", label: "Data Attributes Access" },
-              { key: "actions", label: "Action Permissions" },
-              { key: "uiElements", label: "UI Attributes Access" },
+              { key: "uiElements", label: "UI Element Access" },
               { key: "bulkActions", label: "Bulk Actions" },
             ].map(({ key, label }) => (
               <PermissionSectionView
                 key={key}
                 title={label}
                 tree={selectedRole.permissions?.[key] || {}}
+                path={[key]}
+                getLabel={getPermissionLabel}
               />
             ))}
           </div>
@@ -1245,12 +1889,18 @@ const RoleManagement = () => {
                       className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white resize-none"
                     />
                   </div>
+                  <div className="space-y-3">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                      Module Permission Matrix (Menus, Submenus, Actions, Data)
+                    </p>
+                    <ModulePermissionEditor
+                      permissions={formData.permissions || {}}
+                      onChange={handlePermChange}
+                      getLabel={getPermissionLabel}
+                    />
+                  </div>
                   {[
-                    { key: "menus", label: "Menu Access" },
-                    { key: "subMenus", label: "Sidebar & Submenu Access" },
-                    { key: "dataAccess", label: "Data Attributes Access" },
-                    { key: "actions", label: "Action Permissions" },
-                    { key: "uiElements", label: "UI Attributes Access" },
+                    { key: "uiElements", label: "UI Element Access" },
                     { key: "bulkActions", label: "Bulk Actions" },
                   ].map(({ key, label }) => (
                     <PermissionSectionEditor
@@ -1259,6 +1909,7 @@ const RoleManagement = () => {
                       tree={formData.permissions[key] || {}}
                       onChange={handlePermChange}
                       path={[key]}
+                      getLabel={getPermissionLabel}
                     />
                   ))}
                 </div>

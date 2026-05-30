@@ -287,10 +287,11 @@ class ApiService {
 
   async updateUserLevel(userId, levelId, reason = "") {
     try {
-      const response = await api.put(`/users/${userId}/level`, {
-        levelId,
-        reason,
-      });
+      const payload = { levelId };
+      if (reason && String(reason).trim()) {
+        payload.reason = String(reason).trim();
+      }
+      const response = await api.put(`/users/${userId}/level`, payload);
       return response.data;
     } catch (error) {
       console.error("Error updating user level:", error);
@@ -300,11 +301,11 @@ class ApiService {
 
   async bulkUpdateUserLevels(userIds, levelId, reason = "") {
     try {
-      const response = await api.put("/users/bulk-level-update", {
-        userIds,
-        levelId,
-        reason,
-      });
+      const payload = { userIds, levelId };
+      if (reason && String(reason).trim()) {
+        payload.reason = String(reason).trim();
+      }
+      const response = await api.put("/users/bulk-level-update", payload);
       return response.data;
     } catch (error) {
       console.error("Error bulk updating user levels:", error);

@@ -49,6 +49,9 @@ const StatusBadge = ({ status }) => (
 
 const CreditReviewList = () => {
   const { hasActionPermission, hasDataAccess, user, isSuperAdmin } = useAuth();
+  const canAssignLoans = hasActionPermission("assignLoan") || isSuperAdmin();
+  const canUpdateLoanStatus =
+    hasActionPermission("updateLoanStatus") || isSuperAdmin();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -349,6 +352,10 @@ const CreditReviewList = () => {
   };
 
   const handleAssignLoans = () => {
+    if (!canAssignLoans) {
+      alert("You do not have permission to assign loans.");
+      return;
+    }
     if (selectedLoans.length === 0) {
       alert("Please select at least one loan to assign.");
       return;
@@ -566,7 +573,9 @@ const CreditReviewList = () => {
         )}
 
         {/* Assign selected */}
-        {activeTab === "pending-assign" && selectedLoans.length > 0 && (
+        {activeTab === "pending-assign" &&
+          selectedLoans.length > 0 &&
+          canAssignLoans && (
           <button
             onClick={handleAssignLoans}
             disabled={loading}
@@ -838,45 +847,53 @@ const CreditReviewList = () => {
                       <div className="flex items-center justify-center gap-2">
                         {activeTab === "assigned" ? (
                           <>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReassignLoan(app.id);
-                              }}
-                            >
-                              Reassign
-                            </button>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleWithdrawLoan(app.id);
-                              }}
-                            >
-                              Withdraw
-                            </button>
+                            {canAssignLoans && (
+                              <>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReassignLoan(app.id);
+                                  }}
+                                >
+                                  Reassign
+                                </button>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleWithdrawLoan(app.id);
+                                  }}
+                                >
+                                  Withdraw
+                                </button>
+                              </>
+                            )}
                           </>
                         ) : activeTab === "hanged-up" ? (
                           <>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRetryContact(app.id);
-                              }}
-                            >
-                              Retry Contact
-                            </button>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReassignLoan(app.id);
-                              }}
-                            >
-                              Reassign
-                            </button>
+                            {canAssignLoans && (
+                              <>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRetryContact(app.id);
+                                  }}
+                                >
+                                  Retry Contact
+                                </button>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReassignLoan(app.id);
+                                  }}
+                                >
+                                  Reassign
+                                </button>
+                              </>
+                            )}
                           </>
                         ) : (
                           <button
@@ -957,7 +974,7 @@ const CreditReviewList = () => {
             const isDisbursed = app.status === "disbursed";
             return (
               <>
-                {hasActionPermission("approveLoans") &&
+                {canUpdateLoanStatus &&
                   !isApproved &&
                   !isDisbursed && (
                     <button
@@ -967,7 +984,7 @@ const CreditReviewList = () => {
                       🔍 Review
                     </button>
                   )}
-                {isApproved && hasActionPermission("approveLoans") && (
+                {isApproved && canUpdateLoanStatus && (
                   <button
                     className="op-item op-disburse"
                     onClick={() => handleViewDetails(app, false)}
@@ -975,7 +992,7 @@ const CreditReviewList = () => {
                     💰 Disburse
                   </button>
                 )}
-                {isDisbursed && hasActionPermission("approveLoans") && (
+                {isDisbursed && canUpdateLoanStatus && (
                   <button
                     className="op-item op-disburse"
                     title="Confirm the customer has received the funds and start the repayment clock"
@@ -984,14 +1001,12 @@ const CreditReviewList = () => {
                     ✅ Activate Loan
                   </button>
                 )}
-                {hasActionPermission("viewLoans") && (
-                  <button
-                    className="op-item op-details"
-                    onClick={() => handleViewDetails(app, true)}
-                  >
-                    📋 Details
-                  </button>
-                )}
+                <button
+                  className="op-item op-details"
+                  onClick={() => handleViewDetails(app, true)}
+                >
+                  📋 Details
+                </button>
               </>
             );
           })()}

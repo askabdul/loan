@@ -3,6 +3,17 @@ import axios from "axios";
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
 
 class ConfigAPI {
+  normalizeConfigObject(payload) {
+    if (!payload) return {};
+    if (Array.isArray(payload)) {
+      return payload.reduce((acc, item) => {
+        if (item?.key) acc[item.key] = item.value;
+        return acc;
+      }, {});
+    }
+    return payload;
+  }
+
   // Get all app configurations
   async getAllConfigs() {
     try {
@@ -73,28 +84,22 @@ class ConfigAPI {
       return response.data;
     } catch (error) {
       console.error("Error fetching loan calculation params:", error);
-      // Return default values if API fails
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
+
+      const buildTerm = (termDays) => ({
+        interestRate: Number(cfg[`interest_rate_${termDays}_days`] || 0),
+        serviceFee: Number(cfg[`service_fee_${termDays}_days`] || 0),
+        adminFee: Number(cfg[`admin_fee_${termDays}_days`] || 0),
+        commitmentFee: Number(cfg[`commitment_fee_${termDays}_days`] || 0),
+      });
+
       return {
         success: true,
         data: {
-          "7_days": {
-            interestRate: 5,
-            serviceFee: 2,
-            adminFee: 1,
-            commitmentFee: 1,
-          },
-          "14_days": {
-            interestRate: 8,
-            serviceFee: 3,
-            adminFee: 1.5,
-            commitmentFee: 1.5,
-          },
-          "30_days": {
-            interestRate: 12,
-            serviceFee: 4,
-            adminFee: 2,
-            commitmentFee: 2,
-          },
+          "7_days": buildTerm(7),
+          "14_days": buildTerm(14),
+          "30_days": buildTerm(30),
         },
       };
     }
@@ -112,20 +117,16 @@ class ConfigAPI {
         `Error fetching loan calculation params for ${termDays} days:`,
         error,
       );
-      // Return default values based on term
-      const defaults = {
-        7: { interestRate: 5, serviceFee: 2, adminFee: 1, commitmentFee: 1 },
-        14: {
-          interestRate: 8,
-          serviceFee: 3,
-          adminFee: 1.5,
-          commitmentFee: 1.5,
-        },
-        30: { interestRate: 12, serviceFee: 4, adminFee: 2, commitmentFee: 2 },
-      };
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
-        data: defaults[termDays] || defaults[7],
+        data: {
+          interestRate: Number(cfg[`interest_rate_${termDays}_days`] || 0),
+          serviceFee: Number(cfg[`service_fee_${termDays}_days`] || 0),
+          adminFee: Number(cfg[`admin_fee_${termDays}_days`] || 0),
+          commitmentFee: Number(cfg[`commitment_fee_${termDays}_days`] || 0),
+        },
       };
     }
   }
@@ -137,15 +138,17 @@ class ConfigAPI {
       return response.data;
     } catch (error) {
       console.error("Error fetching contact info:", error);
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
         data: {
-          phone: "+233 123 456 789",
-          email: "support@cedi.com",
-          whatsapp: "+233 123 456 789",
-          address: "Accra, Ghana",
-          businessHours: "Mon-Fri: 8AM-6PM",
-          emergency: "+233 987 654 321",
+          phone: cfg.support_phone || "",
+          email: cfg.support_email || "",
+          whatsapp: cfg.support_whatsapp || "",
+          address: cfg.office_address || "",
+          businessHours: cfg.business_hours || "",
+          emergency: cfg.emergency_contact || "",
         },
       };
     }
@@ -158,15 +161,17 @@ class ConfigAPI {
       return response.data;
     } catch (error) {
       console.error("Error fetching app branding:", error);
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
         data: {
-          appName: "Cedi Loan App",
-          tagline: "Quick & Easy Loans",
-          description: "Get instant loans with flexible repayment terms",
-          companyName: "Cedi Financial Services",
-          logoUrl: "",
-          version: "1.0.0",
+          appName: cfg.app_name || "CEDI Loan",
+          tagline: cfg.app_tagline || "",
+          description: cfg.app_description || "",
+          companyName: cfg.company_name || "",
+          logoUrl: cfg.company_logo_url || "",
+          version: cfg.app_version || "1.0.0",
         },
       };
     }
@@ -179,18 +184,22 @@ class ConfigAPI {
       return response.data;
     } catch (error) {
       console.error("Error fetching loan settings:", error);
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
         data: {
-          minAmount: 100,
-          maxAmount: 5000,
-          defaultCreditLimit: 2000,
-          autoApprovalLimit: 1000,
-          availableTerms: [7, 14, 30],
-          requireCollateral: false,
-          minCreditScore: 300,
-          processingFeeFlat: 0,
-          processingFeePercentage: 0,
+          minAmount: Number(cfg.min_loan_amount || 100),
+          maxAmount: Number(cfg.max_loan_amount || 5000),
+          defaultCreditLimit: Number(cfg.default_credit_limit || 2000),
+          autoApprovalLimit: Number(cfg.auto_approval_limit || 1000),
+          availableTerms: Array.isArray(cfg.loan_terms_available)
+            ? cfg.loan_terms_available
+            : [7, 14, 30],
+          requireCollateral: Boolean(cfg.require_collateral),
+          minCreditScore: Number(cfg.min_credit_score || 300),
+          processingFeeFlat: Number(cfg.processing_fee_flat || 0),
+          processingFeePercentage: Number(cfg.processing_fee_percentage || 0),
         },
       };
     }
@@ -221,6 +230,7 @@ class ConfigAPI {
             interest: interestAmount,
             service: serviceAmount,
             admin: adminAmount,
+            processing: adminAmount,
             commitment: commitmentAmount,
             total: totalFees,
           },

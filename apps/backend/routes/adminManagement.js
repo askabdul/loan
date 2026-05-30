@@ -2,11 +2,12 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
-const { Admin, Role, Loan } = require("../models");
+const { Admin, Role, Loan, User } = require("../models");
 const { adminAuth } = require("../middleware/auth");
 const {
   requireMenuAccess,
   requireSubMenuAccess,
+  requireAnySubMenuAccess,
   requireActionPermission,
 } = require("../middleware/roleAuth");
 
@@ -607,7 +608,16 @@ router.delete(
 );
 
 // GET /api/admin-management/officers?role=review-officer (for assignment modals)
-router.get("/officers", async (req, res) => {
+router.get(
+  "/officers",
+  requireAnySubMenuAccess([
+    { menu: "creditReview", subMenu: "assign" },
+    { menu: "creditReview", subMenu: "list" },
+    { menu: "preCollection", subMenu: "list" },
+    { menu: "collection", subMenu: "list" },
+    { menu: "collection", subMenu: "officers" },
+  ]),
+  async (req, res) => {
   try {
     const { role, status = "active" } = req.query;
     const where = {};
@@ -664,7 +674,147 @@ router.get("/officers", async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
-});
+  },
+);
+
+// GET /api/admin-management/officers/:officerId/cases
+// View an officer's current case assignments across workflows
+router.get(
+  "/officers/:officerId/cases",
+  requireAnySubMenuAccess([
+    { menu: "creditReview", subMenu: "assign" },
+    { menu: "creditReview", subMenu: "list" },
+    { menu: "preCollection", subMenu: "list" },
+    { menu: "collection", subMenu: "list" },
+    { menu: "collection", subMenu: "officers" },
+  ]),
+  async (req, res) => {
+    try {
+      const { officerId } = req.params;
+      const { limit = 50 } = req.query;
+
+      const officer = await Admin.findByPk(officerId, {
+        include: [
+          {
+            model: Role,
+            as: "Role",
+            attributes: ["id", "name", "displayName"],
+          },
+        ],
+        attributes: ["id", "firstName", "lastName", "email", "isActive"],
+      });
+
+      if (!officer) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Officer not found" });
+      }
+
+      const baseInclude = [
+        {
+          model: User,
+          as: "User",
+          attributes: ["id", "userId", "firstName", "lastName", "phoneNumber"],
+        },
+      ];
+
+      const [reviewCases, precollectionCases, collectionCases] =
+        await Promise.all([
+          Loan.findAll({
+            where: {
+              assignedOfficerId: officerId,
+              assignmentStatus: { [Op.in]: ["assigned", "hung-up", "hung-down"] },
+            },
+            include: baseInclude,
+            attributes: [
+              "id",
+              "loanId",
+              "status",
+              "assignmentStatus",
+              "amount",
+              "remainingBalance",
+              "dueDate",
+              "extendedDueDate",
+              "updatedAt",
+            ],
+            order: [["updatedAt", "DESC"]],
+            limit: parseInt(limit),
+          }),
+          Loan.findAll({
+            where: {
+              precollectionOfficerId: officerId,
+              precollectionStatus: {
+                [Op.in]: ["assigned", "processed", "hung-up", "hung-down", "completed"],
+              },
+            },
+            include: baseInclude,
+            attributes: [
+              "id",
+              "loanId",
+              "status",
+              "precollectionStatus",
+              "amount",
+              "remainingBalance",
+              "dueDate",
+              "extendedDueDate",
+              "updatedAt",
+            ],
+            order: [["updatedAt", "DESC"]],
+            limit: parseInt(limit),
+          }),
+          Loan.findAll({
+            where: {
+              collectionOfficerId: officerId,
+              collectionStatus: {
+                [Op.in]: ["assigned", "processed", "hung-up", "hung-down", "completed"],
+              },
+            },
+            include: baseInclude,
+            attributes: [
+              "id",
+              "loanId",
+              "status",
+              "collectionStatus",
+              "amount",
+              "remainingBalance",
+              "dueDate",
+              "extendedDueDate",
+              "updatedAt",
+            ],
+            order: [["updatedAt", "DESC"]],
+            limit: parseInt(limit),
+          }),
+        ]);
+
+      res.json({
+        success: true,
+        data: {
+          officer: {
+            id: officer.id,
+            name: `${officer.firstName} ${officer.lastName}`.trim(),
+            email: officer.email,
+            isActive: officer.isActive,
+            role: officer.Role,
+          },
+          summary: {
+            reviewAssigned: reviewCases.length,
+            precollectionAssigned: precollectionCases.length,
+            collectionAssigned: collectionCases.length,
+            totalAssigned:
+              reviewCases.length + precollectionCases.length + collectionCases.length,
+          },
+          cases: {
+            review: reviewCases,
+            precollection: precollectionCases,
+            collection: collectionCases,
+          },
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+);
 
 // GET /api/admin-management/permissions
 router.get("/permissions", async (req, res) => {
@@ -681,6 +831,8 @@ router.get("/permissions", async (req, res) => {
       subMenus: effectivePermissions.subMenus || {},
       actions: effectivePermissions.actions || {},
       dataAccess: effectivePermissions.dataAccess || {},
+      uiElements: effectivePermissions.uiElements || {},
+      bulkActions: effectivePermissions.bulkActions || {},
     };
     res.json({ success: true, data: { role: admin.Role.name, permissions } });
   } catch (err) {

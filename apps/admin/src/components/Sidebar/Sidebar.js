@@ -269,7 +269,6 @@ const Sidebar = () => {
           title: "All List (God Mode)",
           path: "/pre-collection/all-list",
           subMenuKey: "allList",
-          requiresSuperAdmin: true,
         },
         {
           title: "Pre-Assignment",

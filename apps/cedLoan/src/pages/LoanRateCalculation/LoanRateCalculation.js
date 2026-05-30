@@ -25,7 +25,7 @@ const LoanRateCalculation = () => {
   const fetchLoanRates = async () => {
     try {
       setLoading(true);
-      const response = await configAPI.getAllConfigs();
+      const response = await configAPI.getLoanCalculationParams();
       const configData = response.data || {};
       
       const loanRates = {
@@ -34,48 +34,15 @@ const LoanRateCalculation = () => {
         30: { interestRate: 0, processingFee: 0, serviceFee: 0, commitmentFee: 0 }
       };
       
-      // Handle nested configuration structure
-      let interestRatesConfig = null;
-      let feeStructureConfig = null;
-      
-      // Check if configData is an array (from admin endpoint) or object (from public endpoint)
-      if (Array.isArray(configData)) {
-        configData.forEach(config => {
-          if (config.key === 'interest_rates') {
-            interestRatesConfig = typeof config.value === 'string' ? JSON.parse(config.value) : config.value;
-          } else if (config.key === 'fee_structure') {
-            feeStructureConfig = typeof config.value === 'string' ? JSON.parse(config.value) : config.value;
-          }
-        });
-      } else {
-        // Handle object format from public endpoint
-        if (configData.interest_rates) {
-          interestRatesConfig = typeof configData.interest_rates === 'string' ? 
-            JSON.parse(configData.interest_rates) : configData.interest_rates;
-        }
-        if (configData.fee_structure) {
-          feeStructureConfig = typeof configData.fee_structure === 'string' ? 
-            JSON.parse(configData.fee_structure) : configData.fee_structure;
-        }
-      }
-      
-      // Apply interest rates
-      if (interestRatesConfig) {
-        Object.keys(interestRatesConfig).forEach(term => {
-          if (loanRates[term]) {
-            loanRates[term].interestRate = (interestRatesConfig[term] * 100) || 0;
-          }
-        });
-      }
-      
-      // Apply fee structure
-      if (feeStructureConfig) {
-        Object.keys(loanRates).forEach(term => {
-          loanRates[term].serviceFee = (feeStructureConfig.service_fee_rate * 100) || 0;
-          loanRates[term].processingFee = feeStructureConfig.admin_fee_flat || 0;
-          loanRates[term].commitmentFee = (feeStructureConfig.commitment_fee_rate * 100) || 0;
-        });
-      }
+      Object.keys(configData).forEach((termKey) => {
+        const days = parseInt(String(termKey).replace('_days', ''), 10);
+        if (!loanRates[days]) return;
+        const term = configData[termKey] || {};
+        loanRates[days].interestRate = Number(term.interestRate || 0);
+        loanRates[days].serviceFee = Number(term.serviceFee || 0);
+        loanRates[days].processingFee = Number(term.adminFee || 0);
+        loanRates[days].commitmentFee = Number(term.commitmentFee || 0);
+      });
       
       setRates(loanRates);
       setTempValues({
@@ -110,33 +77,15 @@ const LoanRateCalculation = () => {
       setSaving(true);
       const key = `${term}_${field}`;
       const value = tempValues[key];
-      
-      // Map field names to backend keys
-      if (field === 'interestRate') {
-        // Update nested interest_rates object
-        const response = await configAPI.getAllConfigs();
-        const configData = response.data || {};
-        let currentRates = configData.interest_rates || '{}';
-        const ratesObj = typeof currentRates === 'string' ? JSON.parse(currentRates) : currentRates;
-        ratesObj[term] = value / 100; // Convert percentage to decimal
-        await configAPI.updateConfig('interest_rates', JSON.stringify(ratesObj));
-      } else {
-        // Update nested fee_structure object
-        const response = await configAPI.getAllConfigs();
-        const configData = response.data || {};
-        let currentFees = configData.fee_structure || '{}';
-        const feesObj = typeof currentFees === 'string' ? JSON.parse(currentFees) : currentFees;
-        
-        if (field === 'serviceFee') {
-          feesObj.service_fee_rate = value / 100;
-        } else if (field === 'processingFee') {
-          feesObj.admin_fee_flat = value;
-        } else if (field === 'commitmentFee') {
-          feesObj.commitment_fee_rate = value / 100;
-        }
-        
-        await configAPI.updateConfig('fee_structure', JSON.stringify(feesObj));
-      }
+
+      const fieldToKey = {
+        interestRate: `interest_rate_${term}_days`,
+        serviceFee: `service_fee_${term}_days`,
+        processingFee: `admin_fee_${term}_days`,
+        commitmentFee: `commitment_fee_${term}_days`,
+      };
+
+      await configAPI.updateConfig(fieldToKey[field], value);
       
       setRates({
         ...rates,
@@ -171,39 +120,22 @@ const LoanRateCalculation = () => {
     try {
       setSavingAll(true);
       
-      // Get current configs
-      const response = await configAPI.getAllConfigs();
-      const configData = response.data || {};
-      
-      // Prepare interest rates object
-      let currentRates = configData.interest_rates || '{}';
-      const ratesObj = typeof currentRates === 'string' ? JSON.parse(currentRates) : currentRates;
-      
-      // Prepare fee structure object
-      let currentFees = configData.fee_structure || '{}';
-      const feesObj = typeof currentFees === 'string' ? JSON.parse(currentFees) : currentFees;
-      
-      // Update all rates from tempValues
-      Object.keys(tempValues).forEach(key => {
+      const updates = [];
+      Object.keys(tempValues).forEach((key) => {
         const [term, field] = key.split('_');
         const value = tempValues[key];
-        
-        if (field === 'interestRate') {
-          ratesObj[term] = value / 100; // Convert percentage to decimal
-        } else if (field === 'serviceFee') {
-          feesObj.service_fee_rate = value / 100;
-        } else if (field === 'processingFee') {
-          feesObj.admin_fee_flat = value;
-        } else if (field === 'commitmentFee') {
-          feesObj.commitment_fee_rate = value / 100;
+        const fieldToKey = {
+          interestRate: `interest_rate_${term}_days`,
+          serviceFee: `service_fee_${term}_days`,
+          processingFee: `admin_fee_${term}_days`,
+          commitmentFee: `commitment_fee_${term}_days`,
+        };
+        if (fieldToKey[field]) {
+          updates.push(configAPI.updateConfig(fieldToKey[field], value));
         }
       });
-      
-      // Save both configs
-      await Promise.all([
-        configAPI.updateConfig('interest_rates', JSON.stringify(ratesObj)),
-        configAPI.updateConfig('fee_structure', JSON.stringify(feesObj))
-      ]);
+
+      await Promise.all(updates);
       
       // Update local state
       const newRates = { ...rates };

@@ -274,25 +274,10 @@ const resolveDefaultRoute = ({ hasMenuAccess, hasSubMenuAccess, isSuperAdmin }) 
 };
 
 function HomeRoute() {
-  const { loading, hasMenuAccess, hasSubMenuAccess, isSuperAdmin } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) return null;
-
-  const defaultRoute = resolveDefaultRoute({
-    hasMenuAccess,
-    hasSubMenuAccess,
-    isSuperAdmin,
-  });
-
-  if (defaultRoute === "/data-statistics/dashboard") {
-    return <SimpleDashboard />;
-  }
-
-  if (defaultRoute) {
-    return <Navigate to={defaultRoute} replace />;
-  }
-
-  return <AccessDeniedPage message="You do not have access to any admin module. Contact your administrator." />;
+  return <SimpleDashboard />;
 }
 
 function PermissionRoute({ menuKey, subMenuKey, children }) {

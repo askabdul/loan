@@ -88,6 +88,19 @@ const UserLevelAssignment = ({ onClose }) => {
   const handleSaveEdit = async () => {
     if (!editLevel) { toast.error("Select a level"); return; }
     if (!editingUserId) { toast.error("No user selected"); return; }
+
+    const editedUser = users.find((u) => userIdOf(u) === editingUserId);
+    const nextLevel = loanLevels.find((l) => levelIdOf(l) === editLevel);
+    const currentLevelNumber =
+      Number(editedUser?.currentLevel?.level) ||
+      Number(editedUser?.currentLoanLevel) ||
+      Number(editedUser?.loanLevel) ||
+      0;
+    const confirmed = window.confirm(
+      `Confirm level change for ${editedUser?.name || "this user"}: Level ${currentLevelNumber || "N/A"} → Level ${nextLevel?.level || "N/A"}?`,
+    );
+    if (!confirmed) return;
+
     setLoading(true);
     try {
       const res = await apiService.updateUserLevel(editingUserId, editLevel);
@@ -108,6 +121,18 @@ const UserLevelAssignment = ({ onClose }) => {
       toast.error("Unable to update level. Please use Edit to select a valid level.");
       return;
     }
+    const targetUser = users.find((u) => userIdOf(u) === userId);
+    const nextLevel = loanLevels.find((l) => levelIdOf(l) === levelId);
+    const currentLevelNumber =
+      Number(targetUser?.currentLevel?.level) ||
+      Number(targetUser?.currentLoanLevel) ||
+      Number(targetUser?.loanLevel) ||
+      0;
+    const confirmed = window.confirm(
+      `Confirm level change for ${targetUser?.name || "this user"}: Level ${currentLevelNumber || "N/A"} → Level ${nextLevel?.level || "N/A"}?`,
+    );
+    if (!confirmed) return;
+
     setLoading(true);
     try {
       const res = await apiService.updateUserLevel(userId, levelId);
