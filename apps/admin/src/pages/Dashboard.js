@@ -112,6 +112,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [period, setPeriod] = useState("30d");
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(60);
   const [recentActivities, setRecentActivities] = useState([]);
   const [chartData, setChartData] = useState({
     loanTrends: [],
@@ -140,6 +141,12 @@ const Dashboard = () => {
 
       const overviewPayload = overviewResult.value?.data || {};
       const stats = overviewPayload.stats || {};
+      const nextInterval = Number(
+        overviewPayload?.meta?.dashboardRefreshIntervalSeconds,
+      );
+      if (Number.isFinite(nextInterval) && nextInterval >= 10) {
+        setRefreshIntervalSeconds(nextInterval);
+      }
       const loanAnalytics =
         loanAnalyticsResult.status === "fulfilled"
           ? loanAnalyticsResult.value?.data
@@ -212,6 +219,16 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) return;
+    const intervalMs = Math.max(10, Number(refreshIntervalSeconds || 60)) * 1000;
+    const intervalId = setInterval(() => {
+      fetchDashboardData();
+    }, intervalMs);
+    return () => clearInterval(intervalId);
+  }, [fetchDashboardData, refreshIntervalSeconds]);
 
   const stats = [
     {

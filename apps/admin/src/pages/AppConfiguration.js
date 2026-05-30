@@ -18,6 +18,44 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import apiService from "../services/api";
 
+const CONFIG_KEY_ALIASES = {
+  minLoanAmount: ["min_loan_amount"],
+  maxLoanAmount: ["max_loan_amount"],
+  defaultInterestRate: ["default_interest_rate"],
+  autoApprovalLimit: ["auto_approval_limit"],
+  requireCollateral: ["require_collateral"],
+  maxLoanTerm: ["max_loan_term"],
+  minCreditScore: ["min_credit_score"],
+  processingFee: ["processing_fee_percentage", "processing_fee_flat"],
+  appName: ["app_name"],
+  maintenanceMode: ["maintenance_mode"],
+  maxFileUploadSize: ["max_file_upload_size"],
+  sessionTimeout: ["session_timeout"],
+  enableNotifications: ["enable_notifications"],
+  defaultLanguage: ["default_language"],
+  passwordMinLength: ["password_min_length"],
+  requirePasswordComplexity: ["require_password_complexity"],
+  maxLoginAttempts: ["max_login_attempts"],
+  lockoutDuration: ["lockout_duration"],
+  enableTwoFactor: ["enable_two_factor"],
+  smtpHost: ["smtp_host"],
+  smtpPort: ["smtp_port"],
+  smtpUsername: ["smtp_username"],
+  smtpPassword: ["smtp_password"],
+  fromEmail: ["from_email"],
+  fromName: ["from_name"],
+  enableSSL: ["enable_ssl"],
+  rateLimitWindow: ["rate_limit_window"],
+  rateLimitMax: ["rate_limit_max"],
+  enableCors: ["enable_cors"],
+  corsOrigins: ["cors_origins"],
+  apiVersion: ["api_version"],
+  connectionPoolSize: ["connection_pool_size"],
+  queryTimeout: ["query_timeout"],
+  enableQueryLogging: ["enable_query_logging"],
+  backupRetentionDays: ["backup_retention_days"],
+};
+
 const AppConfiguration = () => {
   const { hasActionPermission, isSuperAdmin } = useAuth();
   const [config, setConfig] = useState(null);
@@ -65,7 +103,11 @@ const AppConfiguration = () => {
           key.includes("loan") ||
           key.includes("interest") ||
           key.includes("amount") ||
-          key.includes("term")
+          key.includes("term") ||
+          key.includes("overdue") ||
+          key.includes("disburse") ||
+          key.includes("extension") ||
+          key.includes("reserve")
         ) {
           categorizedConfig.loan[key] = value;
         } else if (
@@ -106,6 +148,46 @@ const AppConfiguration = () => {
         }
       });
 
+      Object.entries(CONFIG_KEY_ALIASES).forEach(([primaryKey, aliases]) => {
+        const targetCategory = Object.keys(categorizedConfig).find((category) =>
+          Object.prototype.hasOwnProperty.call(categorizedConfig[category], primaryKey),
+        );
+        if (targetCategory) return;
+
+        const sourceCategory = Object.keys(categorizedConfig).find((category) =>
+          aliases.some((alias) =>
+            Object.prototype.hasOwnProperty.call(categorizedConfig[category], alias),
+          ),
+        );
+
+        if (sourceCategory) {
+          const aliasKey = aliases.find((alias) =>
+            Object.prototype.hasOwnProperty.call(categorizedConfig[sourceCategory], alias),
+          );
+          categorizedConfig[sourceCategory][primaryKey] =
+            categorizedConfig[sourceCategory][aliasKey];
+        }
+      });
+
+      const loanSettingDefaults = {
+        auto_disburse_on_approval: true,
+        activate_loan_on_disbursement: true,
+        overdue_day_count_mode: "calendar_midnight",
+        loan_extension_daily_fee_rate: 0.02,
+        max_extension_days_per_request: 30,
+        max_extension_count: 3,
+        max_overdue_days_for_extension: 30,
+        reserve_release_days: 10,
+        dashboard_refresh_interval_seconds: 60,
+        dashboard_cache_ttl_seconds: 30,
+      };
+      Object.entries(loanSettingDefaults).forEach(([key, defaultValue]) => {
+        const targetCategory = key.startsWith("dashboard_") ? "system" : "loan";
+        if (categorizedConfig[targetCategory][key] === undefined) {
+          categorizedConfig[targetCategory][key] = defaultValue;
+        }
+      });
+
       setConfig(categorizedConfig);
     } catch (error) {
       console.error("Error fetching configuration:", error);
@@ -132,7 +214,8 @@ const AppConfiguration = () => {
 
     try {
       setSaving(true);
-      await apiService.updateConfig(key, value);
+      const backendKey = CONFIG_KEY_ALIASES[key]?.[0] || key;
+      await apiService.updateConfig(backendKey, value);
 
       // Update local state
       setConfig((prev) => ({
@@ -140,6 +223,7 @@ const AppConfiguration = () => {
         [category]: {
           ...prev[category],
           [key]: value,
+          [backendKey]: value,
         },
       }));
 
@@ -182,9 +266,10 @@ const AppConfiguration = () => {
   const renderConfigField = (category, key, field) => {
     const fieldKey = `${category}.${key}`;
     const isEditing = editMode[fieldKey];
+    const baseValue = config[category][key];
     const currentValue = isEditing
       ? tempValues[fieldKey]
-      : config[category][key];
+      : baseValue;
     const isSensitive = field.sensitive;
     const isVisible = showSensitive[fieldKey];
     const canEdit = isSuperAdmin() || hasActionPermission("updateConfig");
@@ -248,7 +333,7 @@ const AppConfiguration = () => {
               ) : field.type === "number" ? (
                 <input
                   type="number"
-                  value={currentValue}
+                  value={currentValue ?? 0}
                   onChange={(e) =>
                     handleInputChange(category, key, parseFloat(e.target.value))
                   }
@@ -297,9 +382,11 @@ const AppConfiguration = () => {
                 </span>
               ) : (
                 <span className="text-sm text-gray-700">
-                  {field.type === "number" && field.unit
-                    ? `${currentValue} ${field.unit}`
-                    : String(currentValue ?? "")}
+                  {currentValue === undefined || currentValue === null || currentValue === ""
+                    ? "Not set"
+                    : field.type === "number" && field.unit
+                      ? `${currentValue} ${field.unit}`
+                      : String(currentValue)}
                 </span>
               )}
             </div>
@@ -388,6 +475,76 @@ const AppConfiguration = () => {
           type: "number",
           unit: "GHS",
           min: 0,
+        },
+        auto_disburse_on_approval: {
+          label: "Auto Disburse on Approval",
+          description:
+            "When enabled, approved loans are disbursed immediately without manual disbursement step",
+          type: "boolean",
+        },
+        activate_loan_on_disbursement: {
+          label: "Activate Loan on Disbursement",
+          description:
+            "When enabled, disbursement immediately sets loan status to active and starts repayment clock",
+          type: "boolean",
+        },
+        overdue_day_count_mode: {
+          label: "Overdue Day Counting Mode",
+          description:
+            "Choose how overdue days are counted after due date is reached",
+          type: "select",
+          options: [
+            {
+              value: "calendar_midnight",
+              label: "Calendar Midnight (11:59pm -> 12:00am counts next day)",
+            },
+            {
+              value: "elapsed_24h",
+              label: "Elapsed 24 Hours",
+            },
+          ],
+        },
+        loan_extension_daily_fee_rate: {
+          label: "Loan Extension Daily Fee Rate",
+          description: "Daily extension fee rate as decimal (e.g. 0.02 = 2%)",
+          type: "number",
+          required: true,
+          min: 0,
+          max: 1,
+          step: 0.001,
+        },
+        max_extension_days_per_request: {
+          label: "Max Extension Days Per Request",
+          description: "Maximum extension days allowed in one request",
+          type: "number",
+          unit: "days",
+          min: 1,
+          max: 365,
+        },
+        max_extension_count: {
+          label: "Max Extension Count",
+          description: "Maximum number of extensions allowed per loan",
+          type: "number",
+          min: 1,
+          max: 20,
+        },
+        max_overdue_days_for_extension: {
+          label: "Max Overdue Days For Extension",
+          description:
+            "Loans overdue beyond this threshold cannot be extended",
+          type: "number",
+          unit: "days",
+          min: 0,
+          max: 3650,
+        },
+        reserve_release_days: {
+          label: "Reserve Release Days",
+          description:
+            "Hung-up reserved cases auto-release after this many days",
+          type: "number",
+          unit: "days",
+          min: 1,
+          max: 365,
         },
         requireCollateral: {
           label: "Require Collateral",
@@ -627,6 +784,24 @@ const AppConfiguration = () => {
           label: "Enable Notifications",
           description: "Allow the system to send notifications",
           type: "boolean",
+        },
+        dashboard_refresh_interval_seconds: {
+          label: "Dashboard Refresh Interval",
+          description:
+            "How often dashboard pages auto-refresh analytics from the server",
+          type: "number",
+          unit: "seconds",
+          min: 10,
+          max: 3600,
+        },
+        dashboard_cache_ttl_seconds: {
+          label: "Dashboard Cache TTL",
+          description:
+            "Server-side WebSocket dashboard cache time-to-live in seconds",
+          type: "number",
+          unit: "seconds",
+          min: 5,
+          max: 600,
         },
         defaultLanguage: {
           label: "Default Language",

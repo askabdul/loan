@@ -30,18 +30,24 @@ const AppBranding = () => {
       const response = await apiService.getConfig();
       if (response.success && response.data) {
         const configs = response.data;
+        const getValue = (keys, fallback = "") => {
+          const found = keys
+            .map((k) => configs.find((c) => c.key === k)?.value)
+            .find((v) => v !== undefined && v !== null && v !== "");
+          return found ?? fallback;
+        };
         setBranding({
-          appName: configs.find(c => c.key === 'app_name')?.value || '',
-          appVersion: configs.find(c => c.key === 'app_version')?.value || '',
-          companyName: configs.find(c => c.key === 'company_name')?.value || '',
-          supportEmail: configs.find(c => c.key === 'support_email')?.value || '',
-          supportPhone: configs.find(c => c.key === 'support_phone')?.value || '',
-          primaryColor: configs.find(c => c.key === 'primary_color')?.value || '#1976d2',
-          secondaryColor: configs.find(c => c.key === 'secondary_color')?.value || '#dc004e',
-          logoUrl: configs.find(c => c.key === 'logo_url')?.value || '',
-          splashScreenUrl: configs.find(c => c.key === 'splash_screen_url')?.value || '',
-          termsUrl: configs.find(c => c.key === 'terms_url')?.value || '',
-          privacyUrl: configs.find(c => c.key === 'privacy_url')?.value || ''
+          appName: getValue(['app_name']),
+          appVersion: getValue(['app_version'], '1.0.0'),
+          companyName: getValue(['company_name']),
+          supportEmail: getValue(['support_email']),
+          supportPhone: getValue(['support_phone']),
+          primaryColor: getValue(['primary_color'], '#1976d2'),
+          secondaryColor: getValue(['secondary_color'], '#dc004e'),
+          logoUrl: getValue(['company_logo_url', 'logo_url']),
+          splashScreenUrl: getValue(['splash_screen_url']),
+          termsUrl: getValue(['terms_url']),
+          privacyUrl: getValue(['privacy_url'])
         });
       }
     } catch (error) {
@@ -71,7 +77,7 @@ const AppBranding = () => {
         { key: 'support_phone', value: branding.supportPhone },
         { key: 'primary_color', value: branding.primaryColor },
         { key: 'secondary_color', value: branding.secondaryColor },
-        { key: 'logo_url', value: branding.logoUrl },
+        { key: 'company_logo_url', value: branding.logoUrl },
         { key: 'splash_screen_url', value: branding.splashScreenUrl },
         { key: 'terms_url', value: branding.termsUrl },
         { key: 'privacy_url', value: branding.privacyUrl }

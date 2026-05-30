@@ -46,6 +46,77 @@ const allConfigs = [
     category: 'loans',
     isPublic: false,
   },
+  {
+    key: 'auto_disburse_on_approval',
+    value: true,
+    description: 'Automatically disburse loan immediately after approval',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'activate_loan_on_disbursement',
+    value: true,
+    description: 'Set loan status to active immediately once disbursed',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'overdue_day_count_mode',
+    value: 'calendar_midnight',
+    description:
+      'How overdue days are counted: calendar_midnight or elapsed_24h',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'loan_extension_daily_fee_rate',
+    value: 0.02,
+    description: 'Daily extension fee rate as decimal (0.02 = 2%)',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'max_extension_days_per_request',
+    value: 30,
+    description: 'Maximum extension days allowed per request',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'max_extension_count',
+    value: 3,
+    description: 'Maximum number of extension approvals allowed per loan',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'max_overdue_days_for_extension',
+    value: 30,
+    description: 'Maximum overdue days after which extension is disallowed',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'reserve_release_days',
+    value: 10,
+    description: 'Days before hung-up reserved cases are auto-released',
+    category: 'loans',
+    isPublic: false,
+  },
+  {
+    key: 'dashboard_refresh_interval_seconds',
+    value: 60,
+    description: 'Admin dashboard auto-refresh interval in seconds',
+    category: 'system',
+    isPublic: false,
+  },
+  {
+    key: 'dashboard_cache_ttl_seconds',
+    value: 30,
+    description: 'WebSocket dashboard cache TTL in seconds',
+    category: 'system',
+    isPublic: false,
+  },
 
   // System Configuration
   {

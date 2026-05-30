@@ -154,7 +154,25 @@ const Loan = sequelize.define(
     },
     approvalDate: DataTypes.DATE,
     disbursementDate: DataTypes.DATE,
+    disbursementStatus: {
+      type: DataTypes.ENUM("idle", "processing", "failed", "sent"),
+      defaultValue: "idle",
+    },
+    disbursementLastAttemptAt: DataTypes.DATE,
+    disbursementFailedAt: DataTypes.DATE,
+    disbursementFailureReason: DataTypes.TEXT,
+    disbursementAttempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    disbursementReference: DataTypes.STRING,
+    disbursementChannel: DataTypes.STRING,
     dueDate: DataTypes.DATE,
+    activationConfirmedAt: DataTypes.DATE,
+    activationConfirmedById: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     completionDate: DataTypes.DATE,
     // ── Repayment Tracking ───────────────────────────────────────────
     remainingBalance: {

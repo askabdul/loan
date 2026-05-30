@@ -36,6 +36,7 @@ const {
 } = require("../middleware/realtimeMiddleware");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const { getPlatformRuntimeSettings } = require("../services/loanLifecycleSettings");
 
 const router = express.Router();
 router.use(adminAuth);
@@ -54,14 +55,27 @@ const loanUserInclude = {
   required: false,
 };
 
+const calculateCalendarDueDate = (activationDate, termInDays) => {
+  const due = new Date(activationDate);
+  due.setHours(0, 0, 0, 0);
+  due.setDate(due.getDate() + Number(termInDays || 0));
+  return due;
+};
+
 // ===== DASHBOARD =====
 
 // GET /api/admin/dashboard/overview
 router.get(
   "/dashboard/overview",
-  requireMenuAccess("dataStatistics"),
-  requireSubMenuAccess("dataStatistics", "dashboard"),
   catchAsync(async (req, res, next) => {
+    const canViewAllUsers = await req.admin.canAccessData("viewAllUsers");
+    const canViewAllLoans = await req.admin.canAccessData("viewAllLoans");
+    const canViewPayments = await req.admin.canAccessData("viewPayments");
+    const canViewFinancialData = await req.admin.canAccessData(
+      "viewFinancialData",
+    );
+    const runtimeSettings = await getPlatformRuntimeSettings();
+
     const [
       loanStats,
       userStats,
@@ -176,14 +190,46 @@ router.get(
         (dashboardStats.completedLoans / dashboardStats.totalLoans) * 100,
       );
 
+    const maskedStats = {
+      totalLoans: canViewAllLoans ? dashboardStats.totalLoans : null,
+      totalUsers: canViewAllUsers ? dashboardStats.totalUsers : null,
+      activeUsers: canViewAllUsers ? dashboardStats.activeUsers : null,
+      completedRegistrations: canViewAllUsers
+        ? dashboardStats.completedRegistrations
+        : null,
+      totalDisbursed:
+        canViewFinancialData || canViewPayments
+          ? dashboardStats.totalDisbursed
+          : null,
+      activeLoans: canViewAllLoans ? dashboardStats.activeLoans : null,
+      pendingLoans: canViewAllLoans ? dashboardStats.pendingLoans : null,
+      completedLoans: canViewAllLoans ? dashboardStats.completedLoans : null,
+      rejectedLoans: canViewAllLoans ? dashboardStats.rejectedLoans : null,
+      repaymentRate:
+        canViewFinancialData || canViewPayments
+          ? dashboardStats.repaymentRate
+          : null,
+      totalPayments: canViewPayments ? dashboardStats.totalPayments : null,
+      successfulPayments: canViewPayments
+        ? dashboardStats.successfulPayments
+        : null,
+      failedPayments: canViewPayments ? dashboardStats.failedPayments : null,
+    };
+
+    const recentActivity = {
+      loans: canViewAllLoans ? recentLoans : [],
+      payments: canViewPayments ? recentPayments : [],
+      users: canViewAllUsers ? recentUsers : [],
+    };
+
     res.json({
       success: true,
       data: {
-        stats: dashboardStats,
-        recentActivity: {
-          loans: recentLoans,
-          payments: recentPayments,
-          users: recentUsers,
+        stats: maskedStats,
+        recentActivity,
+        meta: {
+          dashboardRefreshIntervalSeconds:
+            runtimeSettings.dashboardRefreshIntervalSeconds,
         },
       },
     });
@@ -288,10 +334,13 @@ router.get(
             ["approved", "disbursed", "active"].includes(l.status),
           ).length,
           completedLoans: loans.filter((l) => l.status === "completed").length,
-          totalBorrowed: loans.reduce(
-            (s, l) => s + parseFloat(l.amount || 0),
-            0,
-          ),
+          totalBorrowed: loans
+            .filter((l) =>
+              ["disbursed", "active", "overdue", "completed"].includes(
+                l.status,
+              ),
+            )
+            .reduce((s, l) => s + parseFloat(l.amount || 0), 0),
           totalRepaid: payments
             .filter((p) => p.status === "completed")
             .reduce((s, p) => s + parseFloat(p.amount || 0), 0),
@@ -429,6 +478,7 @@ router.get(
   requireAnySubMenuAccess([
     { menu: "creditReview", subMenu: "list" },
     { menu: "order", subMenu: "orderList" },
+    { menu: "order", subMenu: "list" },
   ]),
   filterLoansByRole,
   filterLoanData,
@@ -552,6 +602,7 @@ router.get(
   requireAnySubMenuAccess([
     { menu: "creditReview", subMenu: "list" },
     { menu: "order", subMenu: "orderList" },
+    { menu: "order", subMenu: "list" },
     { menu: "order", subMenu: "loanDetails" },
   ]),
   catchAsync(async (req, res, next) => {
@@ -579,6 +630,7 @@ router.patch(
       "under-review",
       "approved",
       "rejected",
+      "hanged-up",
       "disbursed",
       "active",
       "completed",
@@ -596,6 +648,18 @@ router.patch(
     const loan = await Loan.findByPk(req.params.id);
     if (!loan) return next(new AppError("Loan not found", 404));
 
+    const roleName = req.admin?.Role?.name;
+    if (roleName === "review-officer") {
+      if (!loan.assignedOfficerId || loan.assignedOfficerId !== req.admin.id) {
+        return next(
+          new AppError(
+            "You can only update review status for loans assigned to you.",
+            403,
+          ),
+        );
+      }
+    }
+
     const updates = { status };
     if (status === "rejected" && rejectionReason)
       updates.rejectionReason = rejectionReason;
@@ -612,18 +676,44 @@ router.patch(
       updates.reviewedById = req.admin.id;
       updates.reviewDate = new Date();
     }
-    if (status === "approved") updates.approvalDate = new Date();
-    else if (status === "disbursed") {
+    if (status === "approved") {
+      const now = new Date();
+      updates.approvalDate = now;
+      updates.disbursementStatus = "processing";
+      updates.disbursementLastAttemptAt = now;
+      updates.disbursementAttempts = (loan.disbursementAttempts || 0) + 1;
+      const notes = [...(loan.adminNotes || [])];
+      notes.push({
+        note: "Auto-disbursement initiated after approval",
+        addedBy: req.admin.id,
+        addedAt: now,
+        type: "auto_disbursement_started",
+      });
+      updates.adminNotes = notes;
+    } else if (status === "disbursed") {
       const disbDate = new Date();
       updates.disbursementDate = disbDate;
       // Set remaining balance to full repayment amount so customer sees correct balance
       updates.remainingBalance = loan.totalAmount || loan.amount;
-      // Calculate due date from disbursement date + loan term
-      if (loan.termInDays) {
-        const dueDate = new Date(disbDate);
-        dueDate.setDate(dueDate.getDate() + Number(loan.termInDays));
-        updates.dueDate = dueDate;
+      updates.disbursementStatus = "sent";
+      updates.disbursementFailureReason = null;
+      updates.disbursementFailedAt = null;
+    } else if (status === "active") {
+      if (loan.status !== "disbursed") {
+        return next(
+          new AppError(
+            "Loan can only be activated after successful disbursement.",
+            400,
+          ),
+        );
       }
+      const activationTime = new Date();
+      updates.activationConfirmedAt = activationTime;
+      updates.activationConfirmedById = req.admin.id;
+      updates.dueDate = calculateCalendarDueDate(
+        activationTime,
+        loan.termInDays || 0,
+      );
     }
 
     await loan.update(updates);

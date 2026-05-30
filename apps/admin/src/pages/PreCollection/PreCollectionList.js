@@ -12,8 +12,13 @@ import {
   FiChevronDown,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
+import { useAuth } from "../../contexts/AuthContext";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const RAW_API_BASE =
+  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_BASE = RAW_API_BASE.endsWith("/api")
+  ? RAW_API_BASE
+  : `${RAW_API_BASE.replace(/\/$/, "")}/api`;
 const authHeader = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
@@ -31,11 +36,23 @@ const TABS = [
     color: "text-blue-600 bg-blue-50 border-blue-200",
   },
   {
+    key: "processed",
+    label: "Processed",
+    color: "text-purple-600 bg-purple-50 border-purple-200",
+  },
+  {
     key: "hung-up",
     label: "Hung Up",
     color: "text-red-600 bg-red-50 border-red-200",
   },
+  {
+    key: "completed",
+    label: "Completed",
+    color: "text-emerald-600 bg-emerald-50 border-emerald-200",
+  },
 ];
+
+const RESERVE_HOLD_MS = 10 * 24 * 60 * 60 * 1000;
 
 const fmt = (n) =>
   new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(
@@ -151,7 +168,19 @@ function Modal({ title, onClose, children }) {
 }
 
 const PreCollectionList = () => {
-  const [activeTab, setActiveTab] = useState("pending-assignment");
+  const { user } = useAuth();
+  const roleName = user?.role?.name || user?.Role?.name;
+  const isLeadRole = [
+    "super-admin",
+    "admin",
+    "local-manager",
+    "precollection-lead",
+  ].includes(roleName);
+  const isPrecollectionOfficer = roleName === "precollection-officer";
+
+  const [activeTab, setActiveTab] = useState(() =>
+    isPrecollectionOfficer ? "assigned" : "pending-assignment",
+  );
   const [loans, setLoans] = useState([]);
   const [officers, setOfficers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -162,6 +191,37 @@ const PreCollectionList = () => {
   const [assignModal, setAssignModal] = useState(null);
   const [assignOfficer, setAssignOfficer] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isPrecollectionOfficer) {
+      setActiveTab("assigned");
+    }
+  }, [isPrecollectionOfficer]);
+
+  const canAssignCases = isLeadRole;
+  const canReserveLoan = (loan) =>
+    isLeadRole ||
+    (isPrecollectionOfficer && loan?.precollectionOfficerId === user?.id);
+  const canUpdateStatus = (loan) =>
+    isLeadRole ||
+    (isPrecollectionOfficer && loan?.precollectionOfficerId === user?.id);
+  const canReleaseLoan = (loan) => {
+    if (loan?.precollectionStatus !== "hung-up") {
+      return (
+        isLeadRole ||
+        (isPrecollectionOfficer && loan?.precollectionOfficerId === user?.id)
+      );
+    }
+
+    const isReserver = loan?.reservedByOfficerId === user?.id;
+    if (isReserver) return true;
+
+    if (!isLeadRole) return false;
+    if (!loan?.reservedAt) return false;
+
+    const reserveAgeMs = Date.now() - new Date(loan.reservedAt).getTime();
+    return reserveAgeMs >= RESERVE_HOLD_MS;
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 400);
@@ -283,6 +343,25 @@ const PreCollectionList = () => {
         toast.success("Case reserved — set to hung-up");
         fetchLoans();
       } else toast.error(data.message || "Failed");
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
+  const handleStatusUpdate = async (loanId, status) => {
+    try {
+      const res = await fetch(`${API_BASE}/precollection/cases/${loanId}/status`, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Case moved to ${status}`);
+        fetchLoans();
+      } else {
+        toast.error(data.message || "Failed to update case status");
+      }
     } catch {
       toast.error("Network error");
     }
@@ -427,7 +506,7 @@ const PreCollectionList = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 flex-wrap">
-                        {activeTab === "pending-assignment" && (
+                        {activeTab === "pending-assignment" && canAssignCases && (
                           <button
                             onClick={() => {
                               setAssignModal({ loanId: loan.id });
@@ -440,30 +519,79 @@ const PreCollectionList = () => {
                         )}
                         {activeTab === "assigned" && (
                           <>
-                            <button
-                              onClick={() => {
-                                setAssignModal({ loanId: loan.id });
-                                setAssignOfficer(officer?.id || "");
-                              }}
-                              className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
-                            >
-                              Reassign
-                            </button>
-                            <button
-                              onClick={() => handleUnassign(loan.id)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
-                            >
-                              Unassign
-                            </button>
-                            <button
-                              onClick={() => handleReserve(loan.id)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
-                            >
-                              Reserve
-                            </button>
+                            {canAssignCases && (
+                              <button
+                                onClick={() => {
+                                  setAssignModal({ loanId: loan.id });
+                                  setAssignOfficer(officer?.id || "");
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
+                              >
+                                Reassign
+                              </button>
+                            )}
+                            {canUpdateStatus(loan) && (
+                              <button
+                                onClick={() =>
+                                  handleStatusUpdate(loan.id, "processed")
+                                }
+                                className="px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition"
+                              >
+                                Mark Processed
+                              </button>
+                            )}
+                            {canReleaseLoan(loan) && (
+                              <button
+                                onClick={() => handleUnassign(loan.id)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+                              >
+                                Unassign
+                              </button>
+                            )}
+                            {canReserveLoan(loan) && (
+                              <button
+                                onClick={() => handleReserve(loan.id)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
+                              >
+                                Reserve
+                              </button>
+                            )}
                           </>
                         )}
-                        {activeTab === "hung-up" && (
+                        {activeTab === "processed" && (
+                          <>
+                            {canUpdateStatus(loan) && (
+                              <button
+                                onClick={() =>
+                                  handleStatusUpdate(loan.id, "completed")
+                                }
+                                className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition"
+                              >
+                                Mark Completed
+                              </button>
+                            )}
+                            {canAssignCases && (
+                              <button
+                                onClick={() => {
+                                  setAssignModal({ loanId: loan.id });
+                                  setAssignOfficer(officer?.id || "");
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
+                              >
+                                Reassign
+                              </button>
+                            )}
+                            {canReserveLoan(loan) && (
+                              <button
+                                onClick={() => handleReserve(loan.id)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
+                              >
+                                Reserve
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {activeTab === "hung-up" && canReleaseLoan(loan) && (
                           <button
                             onClick={() => handleUnassign(loan.id)}
                             className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"

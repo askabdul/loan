@@ -17,8 +17,8 @@ const defaultRoles = [
   { name: 'review-officer',       displayName: 'Review Officer',         hierarchy: 5, isActive: true, permissions: { menus: { creditReview: true }, dataAccess: { viewAssignedLoans: true }, actions: {} } },
   { name: 'collection-lead',      displayName: 'Collection Lead',        hierarchy: 6, isActive: true, permissions: { menus: { collection: true }, dataAccess: { viewAllLoans: true }, actions: { assignLoan: true } } },
   { name: 'collection-officer',   displayName: 'Collection Officer',     hierarchy: 7, isActive: true, permissions: { menus: { collection: true }, dataAccess: { viewAssignedLoans: true }, actions: {} } },
-  { name: 'precollection-lead',   displayName: 'Pre-Collection Lead',    hierarchy: 8, isActive: true, permissions: { menus: { precollection: true }, dataAccess: { viewAllLoans: true }, actions: {} } },
-  { name: 'precollection-officer',displayName: 'Pre-Collection Officer', hierarchy: 9, isActive: true, permissions: { menus: { precollection: true }, dataAccess: { viewAssignedLoans: true }, actions: {} } },
+  { name: 'precollection-lead',   displayName: 'Pre-Collection Lead',    hierarchy: 8, isActive: true, permissions: { menus: { preCollection: true }, subMenus: { preCollection: { list: true, allList: true, paymentRecord: true } }, dataAccess: { viewAllLoans: true }, actions: {} } },
+  { name: 'precollection-officer',displayName: 'Pre-Collection Officer', hierarchy: 9, isActive: true, permissions: { menus: { preCollection: true }, subMenus: { preCollection: { list: true, allList: true, paymentRecord: true } }, dataAccess: { viewAssignedLoans: true }, actions: {} } },
   { name: 'customer-service',     displayName: 'Customer Service',       hierarchy: 10, isActive: true, permissions: { menus: { dashboard: true }, dataAccess: { viewAllUsers: true }, actions: {} } },
 ];
 

@@ -11,7 +11,11 @@ import {
   FiPercent,
 } from "react-icons/fi";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const RAW_API_BASE =
+  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_BASE = RAW_API_BASE.endsWith("/api")
+  ? RAW_API_BASE
+  : `${RAW_API_BASE.replace(/\/$/, "")}/api`;
 const authHeader = () => ({
   Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
 });

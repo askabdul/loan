@@ -385,7 +385,7 @@ router.put(
   requireActionPermission("edit_user"),
   [
     body("levelId").notEmpty(),
-    body("reason").optional().trim().isLength({ min: 1, max: 500 }),
+    body("reason").optional({ checkFalsy: true }).trim().isLength({ min: 1, max: 500 }),
   ],
   async (req, res) => {
     try {
@@ -455,7 +455,7 @@ router.put(
   [
     body("userIds").isArray({ min: 1 }),
     body("levelId").notEmpty(),
-    body("reason").optional().trim().isLength({ min: 1, max: 500 }),
+    body("reason").optional({ checkFalsy: true }).trim().isLength({ min: 1, max: 500 }),
   ],
   async (req, res) => {
     try {

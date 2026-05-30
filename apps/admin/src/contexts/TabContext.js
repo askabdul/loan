@@ -66,6 +66,12 @@ const getRouteTitle = (path) => {
 };
 
 const STORAGE_KEY = "cedi_admin_tabs";
+const EXCLUDED_TAB_PATHS = new Set(["/login", "/logout", "/register"]);
+
+const isTabEligiblePath = (path) => {
+  if (!path || path === "/") return false;
+  return !EXCLUDED_TAB_PATHS.has(path);
+};
 
 const loadFromStorage = () => {
   try {
@@ -73,8 +79,13 @@ const loadFromStorage = () => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.tabs)) {
-        const tabs = parsed.tabs.filter((tab) => tab?.id !== "/");
-        const activeTab = parsed.activeTab === "/" ? null : parsed.activeTab;
+        const tabs = parsed.tabs.filter(
+          (tab) => tab?.id !== "/" && isTabEligiblePath(tab?.path || tab?.id),
+        );
+        const activeTab =
+          parsed.activeTab === "/" || !isTabEligiblePath(parsed.activeTab)
+            ? null
+            : parsed.activeTab;
         return { tabs, activeTab };
       }
     }
@@ -102,6 +113,8 @@ export const TabProvider = ({ children }) => {
 
   // Add or activate a tab
   const addTab = useCallback((path, title = null) => {
+    if (!isTabEligiblePath(path)) return;
+
     const tabTitle = title || getRouteTitle(path);
     const tabId = path;
 
@@ -223,7 +236,7 @@ export const TabProvider = ({ children }) => {
   // Update active tab when location changes
   React.useEffect(() => {
     const currentPath = location.pathname;
-    if (currentPath === "/") return;
+    if (!isTabEligiblePath(currentPath)) return;
     addTab(currentPath);
   }, [location.pathname, addTab]);
 

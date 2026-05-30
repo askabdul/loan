@@ -256,6 +256,13 @@ Admin.prototype.getEffectivePermissions = async function () {
   }
   delete merged.subMenus.precollection;
 
+  if (
+    role?.name === "precollection-officer" &&
+    merged.subMenus?.preCollection?.allList === true
+  ) {
+    merged.subMenus.preCollection.list = true;
+  }
+
   return merged;
 };
 
@@ -310,8 +317,29 @@ Admin.prototype.canPerformAction = async function (action) {
       "manageSystemConfig",
     ],
     manageRoles: ["createRole", "editRole", "deleteRole", "manageUserRoles"],
-    assignLoan: ["assignLoans"],
-    reset_password: ["resetPassword"],
+    assignLoan: ["assignLoans", "reassignLoan"],
+    editUsers: ["edit_user"],
+    edit_user: ["editUsers"],
+    updateLoanStatus: [
+      "approveLoans",
+      "rejectLoans",
+      "hangUpLoans",
+      "approveLoan",
+      "rejectLoan",
+      "hangUpApplication",
+      "updateLoan",
+    ],
+    createUser: ["createUsers"],
+    createUsers: ["createUser"],
+    resetPin: ["resetPassword", "reset_password"],
+    reset_password: ["resetPassword", "resetPin"],
+    updateContent: ["editContent"],
+    editContent: ["updateContent"],
+    manageNotifications: ["viewNotifications", "editNotifications"],
+    loan_clearance: ["loanClearance"],
+    loanClearance: ["loan_clearance"],
+    viewReports: ["viewStatistics"],
+    viewStatistics: ["viewReports"],
   };
 
   if (perms.actions && perms.actions[action]) return true;
@@ -408,6 +436,28 @@ Admin.prototype.canAccessSubMenu = async function (menuName, subMenuName) {
     ([key]) => normalizeMenuGroup(key) === targetMenu,
   );
   if (subMenuEntries.length === 0) return hasMenuAccess;
+
+  const hasAnyExplicitSubMenu = subMenuEntries.some(([, subMenus]) =>
+    Object.values(subMenus || {}).some((value) => value === true),
+  );
+
+  if (!hasAnyExplicitSubMenu && hasMenuAccess) {
+    if (targetSubMenu === "list") {
+      return true;
+    }
+  }
+
+  if (targetMenu === "precollection" && targetSubMenu === "list") {
+    const hasAllList = subMenuEntries.some(([, subMenus]) => {
+      if (!subMenus) return false;
+      return Object.entries(subMenus || {}).some(
+        ([key, value]) => value === true && normalizeKey(key) === "alllist",
+      );
+    });
+    if (hasAllList && hasMenuAccess) {
+      return true;
+    }
+  }
 
   return subMenuEntries.some(([, subMenus]) => {
     if (!subMenus) return hasMenuAccess;

@@ -12,6 +12,17 @@ const { Loan, User, Admin, Payment, AppUsageLog, Role } = require("../models");
 
 const router = express.Router();
 
+const COLLECTION_LEAD_ROLES = new Set([
+  "super-admin",
+  "admin",
+  "local-manager",
+  "collection-lead",
+]);
+
+const getRoleName = (admin) => admin?.Role?.name || admin?.role?.name;
+const canManageAssignments = (admin) =>
+  COLLECTION_LEAD_ROLES.has(getRoleName(admin));
+
 // All routes require admin authentication
 router.use(adminAuth);
 router.use(requireMenuAccess("collection"));
@@ -91,6 +102,13 @@ router.get("/cases", requireSubMenuAccess("collection", "list"), async (req, res
 // ── PATCH /cases/:id/assign ───────────────────────────────────────────────────
 router.patch("/cases/:id/assign", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
+    if (!canManageAssignments(req.admin)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only collection leads can assign cases",
+      });
+    }
+
     const { officerId } = req.body;
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
@@ -131,6 +149,18 @@ router.patch("/cases/:id/status", requireSubMenuAccess("collection", "list"), as
         .status(404)
         .json({ success: false, message: "Loan not found" });
 
+    const roleName = getRoleName(req.admin);
+    const canUpdateAny = canManageAssignments(req.admin);
+    const canUpdateOwn =
+      roleName === "collection-officer" && loan.collectionOfficerId === req.admin.id;
+
+    if (!canUpdateAny && !canUpdateOwn) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only update statuses for cases assigned to you",
+      });
+    }
+
     await loan.update({ collectionStatus: status });
     res.json({ success: true, loan });
   } catch (error) {
@@ -147,6 +177,18 @@ router.patch("/cases/:id/reserve", requireSubMenuAccess("collection", "list"), a
       return res
         .status(404)
         .json({ success: false, message: "Loan not found" });
+
+    const roleName = getRoleName(req.admin);
+    const canReserveAny = canManageAssignments(req.admin);
+    const canReserveOwn =
+      roleName === "collection-officer" && loan.collectionOfficerId === req.admin.id;
+
+    if (!canReserveAny && !canReserveOwn) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only reserve cases assigned to you",
+      });
+    }
 
     await loan.update({
       collectionStatus: "hung-up",
@@ -426,6 +468,13 @@ router.get("/app-usage", requireSubMenuAccess("collection", "list"), async (req,
 // Remove officer assignment — case returns to pending-assignment queue
 router.patch("/cases/:id/unassign", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
+    if (!canManageAssignments(req.admin)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only collection leads can unassign cases",
+      });
+    }
+
     const loan = await Loan.findByPk(req.params.id);
     if (!loan)
       return res
@@ -450,6 +499,13 @@ router.patch("/cases/:id/unassign", requireSubMenuAccess("collection", "list"), 
 // Body: { loanIds: string[], officerIds: string[], mode: 'equal' | 'weighted' }
 router.post("/bulk-assign", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
+    if (!canManageAssignments(req.admin)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only collection leads can bulk assign cases",
+      });
+    }
+
     const { loanIds, officerIds, mode = "equal" } = req.body;
     if (!loanIds?.length || !officerIds?.length)
       return res.status(400).json({
@@ -508,6 +564,13 @@ router.post("/bulk-assign", requireSubMenuAccess("collection", "list"), async (r
 // Body: { fromOfficerId: string, toOfficerIds: string[] }
 router.post("/redistribute", requireSubMenuAccess("collection", "list"), async (req, res) => {
   try {
+    if (!canManageAssignments(req.admin)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only collection leads can redistribute cases",
+      });
+    }
+
     const { fromOfficerId, toOfficerIds } = req.body;
     if (!fromOfficerId || !toOfficerIds?.length)
       return res.status(400).json({

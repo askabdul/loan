@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('adminToken'));
   const [permissions, setPermissions] = useState(null);
   const [loading, setLoading] = useState(true);
+  const hasUser = Boolean(user);
 
   useEffect(() => {
     // Check if user is logged in on app start
@@ -44,7 +45,26 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setToken(null);
+      setPermissions(null);
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('adminUser');
+      localStorage.removeItem('adminPermissions');
+    };
+
+    window.addEventListener('admin:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('admin:unauthorized', handleUnauthorized);
+  }, []);
+
   const fetchPermissions = async () => {
+    const activeToken = localStorage.getItem('adminToken');
+    if (!activeToken) {
+      return;
+    }
+
     try {
       const resp = await apiService.getAdminPermissions();
       const perms = resp?.data?.permissions || resp?.data?.data?.permissions;
@@ -56,6 +76,10 @@ export const AuthProvider = ({ children }) => {
       if (roleName) {
         setUser((prevUser) => {
           if (!prevUser) return prevUser;
+          const prevRoleName = prevUser?.role?.name || prevUser?.Role?.name;
+          if (prevRoleName === roleName) {
+            return prevUser;
+          }
           const nextUser = {
             ...prevUser,
             role:
@@ -77,7 +101,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !hasUser) return;
 
     const handleVisibilityRefresh = () => {
       if (document.visibilityState === 'visible') {
@@ -96,7 +120,7 @@ export const AuthProvider = ({ children }) => {
       window.removeEventListener('focus', handleFocusRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityRefresh);
     };
-  }, [token, user]);
+  }, [token, hasUser]);
 
   const login = async (emailOrUsername, password) => {
     try {
@@ -176,6 +200,53 @@ export const AuthProvider = ({ children }) => {
     return group ? group[0] : key;
   };
 
+  const actionAliasGroups = {
+    updateLoanStatus: [
+      "updateLoanStatus",
+      "approveLoans",
+      "rejectLoans",
+      "hangUpLoans",
+      "approveLoan",
+      "rejectLoan",
+      "hangUpApplication",
+      "updateLoan",
+    ],
+    assignLoan: ["assignLoan", "assignLoans", "reassignLoan"],
+    editUsers: ["editUsers", "edit_user"],
+    updateConfiguration: [
+      "updateConfiguration",
+      "updateConfig",
+      "editConfig",
+      "systemConfig",
+      "manageSystemConfig",
+    ],
+    manageRoles: [
+      "manageRoles",
+      "createRole",
+      "editRole",
+      "deleteRole",
+      "manageUserRoles",
+    ],
+    createUser: ["createUser", "createUsers"],
+    resetPin: ["resetPin", "resetPassword", "reset_password"],
+    updateContent: ["updateContent", "editContent"],
+    manageNotifications: [
+      "manageNotifications",
+      "viewNotifications",
+      "editNotifications",
+    ],
+    loan_clearance: ["loan_clearance", "loanClearance"],
+    viewReports: ["viewReports", "viewStatistics"],
+  };
+
+  const normalizeActionGroup = (value) => {
+    const key = normalizeKey(value);
+    const group = Object.entries(actionAliasGroups).find(([, aliases]) =>
+      aliases.some((alias) => normalizeKey(alias) === key),
+    );
+    return group ? group[0] : key;
+  };
+
   // Helper function to check menu permissions
   const hasMenuAccess = (menuName) => {
     if (isSuperAdmin()) return true; // Super Admin bypass
@@ -206,6 +277,28 @@ export const AuthProvider = ({ children }) => {
     );
     if (matchedMenus.length === 0) return hasMenuAccess(menuName);
 
+    const hasAnyExplicitSubMenu = matchedMenus.some(([, subMenus]) =>
+      Object.values(subMenus || {}).some((value) => value === true),
+    );
+
+    if (!hasAnyExplicitSubMenu && hasMenuAccess(menuName)) {
+      const normalizedRequestedSub = normalizeKey(subMenuName);
+      if (normalizedRequestedSub === "list") {
+        return true;
+      }
+    }
+
+    if (targetMenu === "precollection" && targetSub === "list") {
+      const hasAllList = matchedMenus.some(([, subMenus]) =>
+        Object.entries(subMenus || {}).some(
+          ([key, value]) => value === true && normalizeKey(key) === "alllist",
+        ),
+      );
+      if (hasAllList && hasMenuAccess(menuName)) {
+        return true;
+      }
+    }
+
     return matchedMenus.some(([, subMenus]) => {
       if (!subMenus) return hasMenuAccess(menuName);
       return Object.entries(subMenus || {}).some(
@@ -220,9 +313,10 @@ export const AuthProvider = ({ children }) => {
     if (!permissions) return false;
     if (permissions.actions?.[actionName] === true) return true;
 
-    const target = normalizeKey(actionName);
+    const target = normalizeActionGroup(actionName);
     return Object.entries(permissions.actions || {}).some(
-      ([key, value]) => value === true && normalizeKey(key) === target,
+      ([key, value]) =>
+        value === true && normalizeActionGroup(key) === target,
     );
   };
 

@@ -388,7 +388,8 @@ const DetailModal = ({
   onDisburse,
   onActivate,
 }) => {
-  const { hasActionPermission } = useAuth();
+  const { hasActionPermission, user } = useAuth();
+  const canUpdateLoanStatus = hasActionPermission("updateLoanStatus");
   const [activeTab, setActiveTab] = useState("info");
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewAction, setReviewAction] = useState("");
@@ -398,7 +399,11 @@ const DetailModal = ({
   if (!isOpen || !data) return null;
 
   // Review actions (approve/reject/hang-up) available for pending/under-review/assigned
+  const roleName = user?.role?.name || user?.Role?.name;
+  const canReviewOfficerDecide = roleName === "review-officer";
+
   const canReview =
+    canReviewOfficerDecide &&
     !readOnly &&
     ["pending", "under-review", "assigned"].includes(data.status) &&
     (onApprove || onReject || onHangUp);
@@ -532,7 +537,7 @@ const DetailModal = ({
                 <div className="dm-action-btns">
                   {/* Review actions */}
                   {canReview &&
-                    hasActionPermission("approveLoans") &&
+                    canUpdateLoanStatus &&
                     onApprove && (
                       <button
                         className="dm-btn dm-btn-approve"
@@ -542,7 +547,7 @@ const DetailModal = ({
                       </button>
                     )}
                   {canReview &&
-                    hasActionPermission("rejectLoans") &&
+                    canUpdateLoanStatus &&
                     onReject && (
                       <button
                         className="dm-btn dm-btn-reject"
@@ -552,7 +557,7 @@ const DetailModal = ({
                       </button>
                     )}
                   {canReview &&
-                    hasActionPermission("hangUpLoans") &&
+                    canUpdateLoanStatus &&
                     onHangUp && (
                       <button
                         className="dm-btn dm-btn-hangup"
@@ -562,7 +567,7 @@ const DetailModal = ({
                       </button>
                     )}
                   {/* Disbursement action */}
-                  {canDisburse && hasActionPermission("approveLoans") && (
+                  {canDisburse && canUpdateLoanStatus && (
                     <button
                       className="dm-btn dm-btn-disburse"
                       onClick={() => handleAction("disburse")}
@@ -571,7 +576,7 @@ const DetailModal = ({
                     </button>
                   )}
                   {/* Activate action */}
-                  {canActivate && hasActionPermission("approveLoans") && (
+                  {canActivate && canUpdateLoanStatus && (
                     <button
                       className="dm-btn dm-btn-activate"
                       title="Confirm the customer has received the funds and start the repayment clock"

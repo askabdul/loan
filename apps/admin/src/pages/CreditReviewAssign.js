@@ -48,7 +48,7 @@ const CreditReviewAssign = () => {
     current: 1,
   });
 
-  const canAssign = hasActionPermission("assignLoan") || isSuperAdmin;
+  const canAssign = hasActionPermission("assignLoan") || isSuperAdmin();
 
   const fetchLoans = useCallback(async (page = 1, search = "") => {
     try {
@@ -76,9 +76,7 @@ const CreditReviewAssign = () => {
   const fetchOfficers = useCallback(async () => {
     try {
       setLoadingOfficers(true);
-      const res = await apiService.getOfficersByRole(
-        "review-officer,review-lead",
-      );
+      const res = await apiService.getOfficersByRole("review-officer");
       setOfficers(res?.data || []);
     } catch {
       // non-critical

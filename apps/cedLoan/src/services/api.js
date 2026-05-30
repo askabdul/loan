@@ -268,28 +268,6 @@ export const loansAPI = {
     return handleResponse(response);
   },
 
-  requestDisbursement: async (loanId) => {
-    const response = await fetch(
-      `${API_BASE_URL}/loans/${loanId}/request-disbursement`,
-      {
-        method: "POST",
-        headers: createHeaders(),
-      },
-    );
-    return handleResponse(response);
-  },
-
-  confirmReceipt: async (loanId) => {
-    const response = await fetch(
-      `${API_BASE_URL}/loans/${loanId}/confirm-receipt`,
-      {
-        method: "POST",
-        headers: createHeaders(),
-      },
-    );
-    return handleResponse(response);
-  },
-
   calculateLoan: async (amount, duration) => {
     const response = await fetch(
       `${API_BASE_URL}/loans/calculate/${amount}/${duration}`,
