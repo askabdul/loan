@@ -2,12 +2,30 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const { Op } = require('sequelize');
-const { Loan, User } = require('../models');
+const { Loan, User, AppConfig } = require('../models');
 const { auth, adminAuth } = require('../middleware/auth');
 const websocketService = require('../services/websocketService');
 const { getPlatformRuntimeSettings } = require('../services/loanLifecycleSettings');
 
 const router = express.Router();
+
+// Extension feature gate — returns 403 when enable_extension = false in AppConfig
+async function requireExtensionEnabled(req, res, next) {
+  try {
+    const cfg = await AppConfig.getConfig('enable_extension');
+    const enabled = cfg?.value === true || cfg?.value === 'true';
+    if (!enabled) {
+      return res.status(403).json({
+        success: false,
+        code: 'EXTENSION_DISABLED',
+        message: 'Loan extensions are not available.',
+      });
+    }
+    next();
+  } catch {
+    return res.status(403).json({ success: false, message: 'Extension feature unavailable.' });
+  }
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/extensions/'),
@@ -48,6 +66,9 @@ const calculateDaysPastDue = (loan) => {
   const diff = Math.floor((todayStart - dueStart) / (24 * 60 * 60 * 1000));
   return Math.max(0, diff);
 };
+
+// All extension routes require the feature to be enabled in AppConfig
+router.use(requireExtensionEnabled);
 
 // POST /api/loan-extension/submit
 router.post('/submit', auth, upload.single('popFile'), async (req, res) => {

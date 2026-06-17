@@ -1,7 +1,7 @@
 import configAPI from "./configAPI";
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 // Helper function to get auth token
 const getAuthToken = () => {

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 class ConfigAPI {
   normalizeConfigObject(payload) {
@@ -208,24 +208,34 @@ class ConfigAPI {
   // Calculate loan fees dynamically based on current configuration
   async calculateLoanFees(amount, termDays) {
     try {
-      const paramsResponse =
-        await this.getLoanCalculationParamsForTerm(termDays);
+      const paramsResponse = await this.getLoanCalculationParamsForTerm(termDays);
       const params = paramsResponse.data;
 
       const principal = parseFloat(amount);
-      const interestAmount = (principal * params.interestRate) / 100;
-      const serviceAmount = (principal * params.serviceFee) / 100;
-      const adminAmount = (principal * params.adminFee) / 100;
-      const commitmentAmount = (principal * params.commitmentFee) / 100;
+      const r2 = (n) => Math.round(n * 100) / 100;
 
-      const totalFees =
-        interestAmount + serviceAmount + adminAmount + commitmentAmount;
-      const totalAmount = principal + totalFees;
+      const interestAmount   = r2((principal * (params.interestRate   || 0)) / 100);
+      const serviceAmount    = r2((principal * (params.serviceFee     || 0)) / 100);
+      const adminAmount      = r2((principal * (params.adminFee       || 0)) / 100);
+      const commitmentAmount = r2((principal * (params.commitmentFee  || 0)) / 100);
+      const totalFees        = r2(interestAmount + serviceAmount + adminAmount + commitmentAmount);
+
+      // upfrontDeductionPct: % of principal withheld at disbursement (from AppConfig, returned by backend)
+      const upfrontPct     = params.upfrontDeductionPct || 20;
+      const upfrontFee     = r2((principal * upfrontPct) / 100);
+      const amountReceived = r2(principal - upfrontFee);
+      // totalAmount: full obligation (principal + all fees, e.g. 145 for GHS 100 at 45%)
+      const totalAmount    = r2(principal + totalFees);
+      // repaymentAmount: what user owes after upfront is collected (e.g. 125)
+      const repaymentAmount = r2(totalAmount - upfrontFee);
 
       return {
         success: true,
         data: {
           principal,
+          upfrontPct,
+          upfrontFee,
+          amountReceived,
           fees: {
             interest: interestAmount,
             service: serviceAmount,
@@ -235,11 +245,12 @@ class ConfigAPI {
             total: totalFees,
           },
           totalAmount,
+          repaymentAmount,
           breakdown: {
-            interestRate: params.interestRate,
-            serviceFeeRate: params.serviceFee,
-            adminFeeRate: params.adminFee,
-            commitmentFeeRate: params.commitmentFee,
+            interestRate:      params.interestRate   || 0,
+            serviceFeeRate:    params.serviceFee     || 0,
+            adminFeeRate:      params.adminFee       || 0,
+            commitmentFeeRate: params.commitmentFee  || 0,
           },
         },
       };

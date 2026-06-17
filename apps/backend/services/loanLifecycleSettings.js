@@ -175,9 +175,15 @@ const getPlatformRuntimeSettings = async ({ forceRefresh = false } = {}) => {
   return runtimeSettingsCache;
 };
 
+function invalidateSettingsCache() {
+  runtimeSettingsCache = null;
+  runtimeSettingsCacheAt = 0;
+}
+
 module.exports = {
   DEFAULT_LOAN_LIFECYCLE_SETTINGS,
   getPlatformRuntimeSettings,
   getLoanLifecycleSettings,
   calculateOverdueDays,
+  invalidateSettingsCache,
 };

@@ -25,6 +25,7 @@ const PersonalInfo = () => {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
+    email: "",
     dateOfBirth: "",
     gender: "",
     address: "",
@@ -56,6 +57,8 @@ const PersonalInfo = () => {
     if (!formData.firstName.trim())
       newErrors.firstName = "First name is required";
     if (!formData.lastName.trim()) newErrors.lastName = "Last name is required";
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
+      newErrors.email = "Please enter a valid email address";
     if (!formData.dateOfBirth)
       newErrors.dateOfBirth = "Date of birth is required";
     if (!formData.gender) newErrors.gender = "Gender is required";
@@ -159,6 +162,28 @@ const PersonalInfo = () => {
                           </div>
                         )}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label fw-medium text-dark">
+                      Email Address{" "}
+                      <span className="text-muted fw-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      className={`form-control cedi-form-input ${errors.email ? "is-invalid" : ""}`}
+                      placeholder="e.g. yourname@gmail.com"
+                      autoComplete="email"
+                    />
+                    {errors.email && (
+                      <div className="invalid-feedback">{errors.email}</div>
+                    )}
+                    <div className="form-text">
+                      Used for loan notifications and account recovery.
                     </div>
                   </div>
 

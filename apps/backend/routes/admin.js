@@ -36,7 +36,22 @@ const {
 } = require("../middleware/realtimeMiddleware");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
-const { getPlatformRuntimeSettings } = require("../services/loanLifecycleSettings");
+const {
+  getPlatformRuntimeSettings,
+  invalidateSettingsCache,
+} = require("../services/loanLifecycleSettings");
+const {
+  isBridgeConfigured,
+  initiateBridgeDisbursement,
+} = require("../services/bridgeService");
+
+const LIFECYCLE_KEYS = new Set([
+  'auto_disburse_on_approval', 'activate_loan_on_disbursement',
+  'overdue_day_count_mode', 'loan_extension_daily_fee_rate',
+  'max_extension_days_per_request', 'max_extension_count',
+  'max_overdue_days_for_extension', 'reserve_release_days',
+  'dashboard_refresh_interval_seconds', 'dashboard_cache_ttl_seconds',
+]);
 
 const router = express.Router();
 router.use(adminAuth);
@@ -263,6 +278,7 @@ router.get(
     if (level) where.currentLoanLevel = parseInt(level);
     if (search)
       where[Op.or] = [
+        { userId: { [Op.iLike]: `%${search}%` } },
         { firstName: { [Op.iLike]: `%${search}%` } },
         { lastName: { [Op.iLike]: `%${search}%` } },
         { email: { [Op.iLike]: `%${search}%` } },
@@ -467,6 +483,27 @@ router.patch(
       message: "User loan level updated successfully",
       data: { user },
     });
+  }),
+);
+
+// PUT /api/admin/users/:id/reset-pin
+router.put(
+  "/users/:id/reset-pin",
+  requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
+  requireActionPermission("resetPin"),
+  [body("newPin").isString().isLength({ min: 4, max: 4 }).matches(/^\d{4}$/)],
+  catchAsync(async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return next(new AppError("PIN must be exactly 4 digits", 400));
+
+    const user = await User.findByPk(req.params.id);
+    if (!user) return next(new AppError("User not found", 404));
+
+    // The beforeUpdate hook in User model automatically bcrypt-hashes the pin
+    await user.update({ pin: req.body.newPin });
+    res.json({ success: true, message: "PIN reset successfully" });
   }),
 );
 
@@ -679,16 +716,59 @@ router.patch(
     if (status === "approved") {
       const now = new Date();
       updates.approvalDate = now;
-      updates.disbursementStatus = "processing";
       updates.disbursementLastAttemptAt = now;
       updates.disbursementAttempts = (loan.disbursementAttempts || 0) + 1;
+
       const notes = [...(loan.adminNotes || [])];
-      notes.push({
-        note: "Auto-disbursement initiated after approval",
-        addedBy: req.admin.id,
-        addedAt: now,
-        type: "auto_disbursement_started",
-      });
+
+      if (isBridgeConfigured()) {
+        // Attempt Bridge API outbound disbursement (DTM)
+        try {
+          const loanUser = loan.User || (await User.findByPk(loan.userId, { attributes: ["id", "firstName", "lastName", "phoneNumber"] }));
+          const disbResult = await initiateBridgeDisbursement({ loan, user: loanUser, req });
+
+          if (disbResult.accepted) {
+            updates.disbursementStatus = "processing";
+            updates.disbursementReference = disbResult.transactionId;
+            updates.disbursementChannel = "momo";
+            notes.push({
+              note: `Bridge disbursement initiated — txn: ${disbResult.transactionId}, network: ${disbResult.detectedNetwork}, amount: GHS ${disbResult.disbursedAmount}`,
+              addedBy: req.admin.id,
+              addedAt: now,
+              type: "bridge_disbursement_started",
+            });
+          } else {
+            updates.disbursementStatus = "failed";
+            updates.disbursementFailedAt = now;
+            updates.disbursementFailureReason = disbResult.responseMessage || "Bridge API rejected disbursement";
+            notes.push({
+              note: `Bridge disbursement failed: ${disbResult.responseMessage} (code ${disbResult.responseCode})`,
+              addedBy: req.admin.id,
+              addedAt: now,
+              type: "bridge_disbursement_failed",
+            });
+          }
+        } catch (disbError) {
+          updates.disbursementStatus = "failed";
+          updates.disbursementFailedAt = now;
+          updates.disbursementFailureReason = disbError.message;
+          notes.push({
+            note: `Bridge disbursement error: ${disbError.message}`,
+            addedBy: req.admin.id,
+            addedAt: now,
+            type: "bridge_disbursement_error",
+          });
+        }
+      } else {
+        updates.disbursementStatus = "processing";
+        notes.push({
+          note: "Auto-disbursement initiated (Bridge API not configured — manual disbursement required)",
+          addedBy: req.admin.id,
+          addedAt: now,
+          type: "auto_disbursement_started",
+        });
+      }
+
       updates.adminNotes = notes;
     } else if (status === "disbursed") {
       const disbDate = new Date();
@@ -881,6 +961,7 @@ router.put(
       req.body.value,
       req.admin.id,
     );
+    if (LIFECYCLE_KEYS.has(req.params.key)) invalidateSettingsCache();
     const websocketService = require("../services/websocketService");
     websocketService.broadcastSystemConfigUpdate(
       req.params.key,

@@ -16,7 +16,7 @@ const LoanApplication = () => {
   const { getLoanConfig, loading: configLoading } = useConfig();
   useSocket(); // Initialize socket connection
   const [loanAmount, setLoanAmount] = useState(100);
-  const [loanTerm, setLoanTerm] = useState(14);
+  const [loanTerm, setLoanTerm] = useState(7);
   const [loanStatus, setLoanStatus] = useState(null); // null, 'pending', 'under-review', 'approved', 'rejected', 'active', 'completed'
   const [activeLoan, setActiveLoan] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -123,7 +123,9 @@ const LoanApplication = () => {
           setAvailableTerms(
             levelInfo.data.currentLevel.availableTerms || [7, 14, 30],
           );
-          setSelectedTerm(levelInfo.data.currentLevel.availableTerms?.[0] || 7);
+          const firstTerm = levelInfo.data.currentLevel.availableTerms?.[0] || 7;
+          setSelectedTerm(firstTerm);
+          setLoanTerm(firstTerm);
 
           // Adjust loan amount if it's outside the new limits
           if (loanAmount < levelInfo.data.currentLevel.minAmount) {
@@ -146,18 +148,17 @@ const LoanApplication = () => {
     fetchUserData();
   }, [showToast]);
 
-  // Dynamic fee calculation using configAPI
+  // Dynamic fee calculation — runs in background, result used for repaymentAmount display
   const calculateDynamicFees = async (amount, term) => {
     setIsCalculatingFees(true);
     try {
       const result = await configAPI.calculateLoanFees(amount, term);
       if (result.success) {
+        const d = result.data;
         const fees = {
-          interestAmount: result.data.fees.interest,
-          serviceFee: result.data.fees.service,
-          processingFee: result.data.fees.processing || result.data.fees.admin,
-          commitmentFee: result.data.fees.commitment,
-          totalFees: result.data.fees.total,
+          repaymentAmount: d.repaymentAmount,   // totalAmount - upfrontFee (e.g. 125 for GHS 100)
+          totalFees:       d.fees.total,
+          upfrontPct:      d.upfrontPct,
         };
         setDynamicFees(fees);
         setIsCalculatingFees(false);
@@ -167,48 +168,35 @@ const LoanApplication = () => {
       console.error("Error calculating dynamic fees:", error);
     }
 
-    // Fallback to static calculation if dynamic fails
+    // Static fallback
     const fallbackFees = calculateStaticFees(amount, term);
     setDynamicFees(fallbackFees);
     setIsCalculatingFees(false);
     return fallbackFees;
   };
 
-  // Dynamic fee calculation using configuration
+  // Static fallback: interest+service+admin+commitment fees + 20% upfront deduction
   const calculateStaticFees = (amount, term) => {
-    // Get dynamic rates from configuration
-    const interestRate = getLoanConfig(term, "interest_rate") || 0;
-    const serviceFeeRate = getLoanConfig(term, "service_fee") || 0;
-    const processingFeeRate =
-      getLoanConfig(term, "processing_fee") ||
-      getLoanConfig(term, "admin_fee") ||
-      0;
-    const commitmentFeeRate = getLoanConfig(term, "commitment_fee") || 0;
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const interestRate   = getLoanConfig(term, "interest_rate") || 9;
+    const serviceFeeRate = getLoanConfig(term, "service_fee")   || 12;
+    const adminFeeRate   = getLoanConfig(term, "admin_fee")     || 12;
+    const commitmentRate = getLoanConfig(term, "commitment_fee")|| 12;
+    const upfrontPct     = 20; // default if API unreachable
 
-    const interestAmount = (amount * interestRate) / 100;
-    const serviceFee = (amount * serviceFeeRate) / 100;
-    const processingFee = (amount * processingFeeRate) / 100;
-    const commitmentFee = (amount * commitmentFeeRate) / 100;
+    const totalFees = r2(
+      (amount * (interestRate + serviceFeeRate + adminFeeRate + commitmentRate)) / 100
+    );
+    const totalAmount     = r2(amount + totalFees);
+    const upfrontFee      = r2((amount * upfrontPct) / 100);
+    const repaymentAmount = r2(totalAmount - upfrontFee); // e.g. 125 for GHS 100
 
-    return {
-      interestAmount,
-      serviceFee,
-      processingFee,
-      commitmentFee,
-      totalFees: interestAmount + serviceFee + processingFee + commitmentFee,
-    };
+    return { repaymentAmount, totalFees, upfrontPct };
   };
 
-  // Get current fees (dynamic or fallback)
-  const getCurrentFees = () => {
-    return dynamicFees || calculateStaticFees(loanAmount, loanTerm);
-  };
-
-  // Calculate total repayment amount
-  const calculateTotalRepayment = () => {
-    const fees = getCurrentFees();
-    return loanAmount + fees.totalFees;
-  };
+  // repaymentAmount: what the user must pay before overdue (totalAmount - upfrontFee)
+  const getRepaymentAmount = () =>
+    dynamicFees?.repaymentAmount ?? calculateStaticFees(loanAmount, loanTerm).repaymentAmount;
 
   // Effect to recalculate fees when amount, term, or configuration changes
   useEffect(() => {
@@ -825,129 +813,149 @@ const LoanApplication = () => {
 
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               {/* Loan summary strip */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  {
-                    label: "Outstanding",
-                    value: `GHS ${parseFloat(remainingBalance || 0).toFixed(2)}`,
-                    accent: "text-red-600",
-                  },
-                  {
-                    label: "Due date",
-                    value: (() => {
-                      const d = getLoanDueDate(activeLoan);
-                      return d
-                        ? d.toLocaleDateString() +
-                            (activeLoan?.dueDate ? "" : "*")
-                        : "TBD";
-                    })(),
-                    accent: (() => {
-                      const d = getLoanDueDate(activeLoan);
-                      if (!d) return "text-gray-600";
-                      return d < new Date() ? "text-red-600" : "text-gray-800";
-                    })(),
-                  },
-                  {
-                    label: "Loan term",
-                    value: `${activeLoan?.termInDays || "—"} days`,
-                    accent: "text-gray-800",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="bg-gray-50 rounded-xl p-3 text-center"
-                  >
-                    <p
-                      className={`text-sm font-bold leading-tight ${item.accent}`}
-                    >
-                      {item.value}
-                    </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {item.label}
-                    </p>
-                  </div>
-                ))}
-              </div>
+              {(() => {
+                const _bal = parseFloat(remainingBalance || 0);
+                const _fee = parseFloat(activeLoan?.totalOverdueFee || activeLoan?.overdueAmount || 0);
+                const _total = _bal + _fee;
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        {
+                          label: activeLoan?.isOverdue ? "Total Owed" : "Outstanding",
+                          value: `GHS ${_total.toFixed(2)}`,
+                          accent: "text-red-600",
+                        },
+                        {
+                          label: "Due date",
+                          value: (() => {
+                            const d = getLoanDueDate(activeLoan);
+                            return d
+                              ? d.toLocaleDateString() +
+                                  (activeLoan?.dueDate ? "" : "*")
+                              : "TBD";
+                          })(),
+                          accent: (() => {
+                            const d = getLoanDueDate(activeLoan);
+                            if (!d) return "text-gray-600";
+                            return d < new Date() ? "text-red-600" : "text-gray-800";
+                          })(),
+                        },
+                        {
+                          label: "Loan term",
+                          value: `${activeLoan?.termInDays || "—"} days`,
+                          accent: "text-gray-800",
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="bg-gray-50 rounded-xl p-3 text-center"
+                        >
+                          <p className={`text-sm font-bold leading-tight ${item.accent}`}>
+                            {item.value}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {item.label}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
 
-              {/* Overdue notice */}
-              {activeLoan?.isOverdue && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                  <p className="text-xs text-amber-800 font-medium">
-                    ⚠️ Your loan is {activeLoan.overdueDays} day
-                    {activeLoan.overdueDays !== 1 ? "s" : ""} overdue. Please
-                    pay as soon as possible to avoid additional penalties.
-                  </p>
-                </div>
-              )}
-
-              {/* Payment type */}
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Payment Type
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    {
-                      value: "full",
-                      label: "Full payment",
-                      sub: `GHS ${parseFloat(remainingBalance || 0).toFixed(2)}`,
-                    },
-                    {
-                      value: "partial",
-                      label: "Partial payment",
-                      sub: "Choose amount",
-                    },
-                  ].map((opt) => (
-                    <label
-                      key={opt.value}
-                      className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-colors ${
-                        paymentType === opt.value
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="paymentType"
-                          value={opt.value}
-                          checked={paymentType === opt.value}
-                          onChange={(e) => setPaymentType(e.target.value)}
-                          className="accent-blue-600"
-                        />
-                        <span className="text-sm font-semibold text-gray-700">
-                          {opt.label}
-                        </span>
+                    {/* Overdue notice with breakdown */}
+                    {activeLoan?.isOverdue && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1">
+                        <p className="text-xs text-amber-800 font-semibold">
+                          ⚠️ Your loan is {activeLoan.overdueDays} day
+                          {activeLoan.overdueDays !== 1 ? "s" : ""} overdue.
+                        </p>
+                        <div className="text-xs text-amber-700 space-y-0.5">
+                          <div className="flex justify-between">
+                            <span>Principal balance</span>
+                            <span>GHS {_bal.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Late fee ({activeLoan.overdueDays}d × 5%)</span>
+                            <span>GHS {_fee.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between font-semibold border-t border-amber-200 pt-0.5 mt-0.5">
+                            <span>Total to clear</span>
+                            <span>GHS {_total.toFixed(2)}</span>
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-xs text-gray-400 mt-1 pl-5">
-                        {opt.sub}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+                    )}
 
-              {/* Partial amount */}
-              {paymentType === "partial" && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Payment Amount (GHS)
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                    placeholder="Enter amount"
-                    min="0.01"
-                    max={remainingBalance}
-                    step="0.01"
-                  />
-                  <p className="text-[11px] text-gray-400 mt-1">
-                    Max: GHS {parseFloat(remainingBalance || 0).toFixed(2)}
-                  </p>
-                </div>
-              )}
+                    {/* Payment type */}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        Payment Type
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          {
+                            value: "full",
+                            label: "Full payment",
+                            sub: `GHS ${_total.toFixed(2)}`,
+                          },
+                          {
+                            value: "partial",
+                            label: "Partial payment",
+                            sub: "Choose amount",
+                          },
+                        ].map((opt) => (
+                          <label
+                            key={opt.value}
+                            className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-colors ${
+                              paymentType === opt.value
+                                ? "border-blue-500 bg-blue-50"
+                                : "border-gray-200 hover:bg-gray-50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name="paymentType"
+                                value={opt.value}
+                                checked={paymentType === opt.value}
+                                onChange={(e) => setPaymentType(e.target.value)}
+                                className="accent-blue-600"
+                              />
+                              <span className="text-sm font-semibold text-gray-700">
+                                {opt.label}
+                              </span>
+                            </div>
+                            <span className="text-xs text-gray-400 mt-1 pl-5">
+                              {opt.sub}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Partial amount */}
+                    {paymentType === "partial" && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                          Payment Amount (GHS)
+                        </label>
+                        <input
+                          type="number"
+                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={paymentAmount}
+                          onChange={(e) => setPaymentAmount(e.target.value)}
+                          placeholder="Enter amount"
+                          min="0.01"
+                          max={_total}
+                          step="0.01"
+                        />
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          Max: GHS {_total.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Mobile Money Provider */}
               <div>
@@ -965,20 +973,21 @@ const LoanApplication = () => {
                 </select>
               </div>
 
-              {/* Mobile number */}
+              {/* Mobile number — read-only; tied to KYC-verified phone */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Mobile Number
+                  Mobile Money Number
                 </label>
                 <input
                   type="tel"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-100 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
                   value={mobileNumber}
                   readOnly
                   disabled
-                  placeholder="Auto-filled from your profile"
-                  maxLength="10"
                 />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Your verified account number. To update it, go to Profile → KYC.
+                </p>
               </div>
 
               {/* Recent payments */}
@@ -1293,12 +1302,34 @@ const LoanApplication = () => {
     }
   }, [user?.phoneNumber]);
 
+  // Refresh balance when Bridge webhook confirms the payment
+  useEffect(() => {
+    const handlePaymentReceived = async (event) => {
+      const { remainingBalance: newBalance, loanId } = event.detail || {};
+      if (activeLoan && activeLoan.id === loanId) {
+        if (newBalance !== undefined) {
+          setRemainingBalance(parseFloat(newBalance));
+        }
+        // Full refresh to get updated loan status
+        await checkActiveLoan();
+        showToast("Payment confirmed by your mobile network!", "success");
+      }
+    };
+    window.addEventListener("paymentReceived", handlePaymentReceived);
+    return () => window.removeEventListener("paymentReceived", handlePaymentReceived);
+  }, [activeLoan]);
+
   const handlePaymentSubmit = async () => {
-    const currentBalance = remainingBalance || 0;
+    const currentBalance = parseFloat(remainingBalance || 0);
+    const overdueFee = parseFloat(
+      activeLoan?.totalOverdueFee || activeLoan?.overdueAmount || 0,
+    );
+    const totalAmountDue = currentBalance + overdueFee;
+
     const amount =
       paymentType === "full"
-        ? currentBalance
-        : parseFloat(remainingBalance || 0);
+        ? totalAmountDue
+        : parseFloat(paymentAmount || 0);
 
     // Validation
     if (paymentType === "partial" && amount <= 0) {
@@ -1306,9 +1337,9 @@ const LoanApplication = () => {
       return;
     }
 
-    if (amount > currentBalance) {
+    if (amount > totalAmountDue) {
       showToast(
-        `Payment amount (GHS ${amount.toFixed(2)}) cannot exceed remaining balance (GHS ${currentBalance.toFixed(2)}).`,
+        `Payment amount (GHS ${amount.toFixed(2)}) cannot exceed total owed (GHS ${totalAmountDue.toFixed(2)}).`,
         "error",
       );
       return;
@@ -1501,112 +1532,42 @@ const LoanApplication = () => {
 
         {/* Loan Summary */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">
             📊 Loan Summary
           </p>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Loan Amount</span>
-              <span className="font-semibold text-gray-800">
-                GHS {loanAmount.toFixed(2)}
-              </span>
-            </div>
 
-            {/* Fee Breakdown */}
-            <div className="pt-2">
-              <div className="flex items-center gap-2 mb-2">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Fee Breakdown
-                </p>
-                {isCalculatingFees && (
-                  <span className="text-xs text-blue-500 animate-pulse">
-                    calculating…
-                  </span>
-                )}
-              </div>
-              {(() => {
-                const fees = getCurrentFees();
-                return (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">
-                        Interest (
-                        {((fees.interestAmount / loanAmount) * 100).toFixed(1)}
-                        %)
-                      </span>
-                      <span className="text-amber-600 font-medium">
-                        GHS {fees.interestAmount.toFixed(2)}
-                      </span>
-                    </div>
-                    {fees.serviceFee > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">
-                          Service Fee (
-                          {((fees.serviceFee / loanAmount) * 100).toFixed(1)}%)
-                        </span>
-                        <span className="text-gray-600 font-medium">
-                          GHS {fees.serviceFee.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                    {fees.processingFee > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">
-                          Processing Fee (
-                          {((fees.processingFee / loanAmount) * 100).toFixed(1)}
-                          %)
-                        </span>
-                        <span className="text-gray-600 font-medium">
-                          GHS {fees.processingFee.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                    {fees.commitmentFee > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">
-                          Commitment Fee (
-                          {((fees.commitmentFee / loanAmount) * 100).toFixed(1)}
-                          %)
-                        </span>
-                        <span className="text-gray-600 font-medium">
-                          GHS {fees.commitmentFee.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
+          {(() => {
+            const repaymentAmount = getRepaymentAmount();
+            const dueDate = new Date(Date.now() + loanTerm * 24 * 60 * 60 * 1000);
+            return (
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">You Borrow</span>
+                  <span className="font-semibold text-gray-800">GHS {loanAmount.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between items-center bg-emerald-50 rounded-xl px-4 py-3 border border-emerald-200">
+                  <span className="text-sm font-bold text-emerald-800">💸 You Receive</span>
+                  <span className="text-lg font-bold text-emerald-700">GHS {loanAmount.toFixed(2)}</span>
+                </div>
+
+                <div className="border-t border-gray-100 pt-3 space-y-1.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Due Date</span>
+                    <span className="font-semibold text-gray-800">{dueDate.toLocaleDateString()}</span>
                   </div>
-                );
-              })()}
-            </div>
-
-            <div className="border-t border-gray-100 pt-3 mt-2">
-              <div className="flex justify-between text-sm mb-1.5">
-                <span className="text-gray-500">Total Fee Rate</span>
-                <span className="font-semibold text-emerald-600">
-                  {((getCurrentFees().totalFees / loanAmount) * 100).toFixed(1)}
-                  %
-                </span>
+                  <div className="flex justify-between text-base">
+                    <span className="font-bold text-gray-800">You Repay on Day {loanTerm}</span>
+                    <span className="font-bold text-blue-600 text-lg">GHS {repaymentAmount.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between text-sm mb-1.5">
-                <span className="text-gray-500">Due Date</span>
-                <span className="font-semibold text-gray-800">
-                  {new Date(
-                    Date.now() + loanTerm * 24 * 60 * 60 * 1000,
-                  ).toLocaleDateString()}
-                </span>
-              </div>
-              <div className="flex justify-between text-base mt-2">
-                <span className="font-bold text-gray-800">Total Repayment</span>
-                <span className="font-bold text-blue-600 text-lg">
-                  GHS {calculateTotalRepayment().toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           <div className="mt-4 bg-amber-50 rounded-xl p-3 border border-amber-100">
             <p className="text-xs text-amber-800">
-              <strong>⚠️ Important:</strong> Overdue penalty of{" "}
-              <strong>2% per day</strong> applies to late payments.
+              <strong>⚠️ Late payment:</strong> Additional charges apply if payment is missed by the due date.
             </p>
           </div>
         </div>
@@ -1671,23 +1632,14 @@ const LoanApplication = () => {
                   the specified term.
                 </p>
                 <p>
-                  <strong>2. Interest Rates:</strong>
+                  <strong>2. Service Charges:</strong> Applicable service charges
+                  are included in the loan and managed by CEDI Loan. You repay
+                  only the amount you borrowed.
                 </p>
-                <ul className="list-disc ml-4 space-y-0.5">
-                  <li>
-                    7-day loans: 1% interest + applicable fees = 22% total
-                  </li>
-                  <li>
-                    14-day loans: 2% interest + applicable fees = 26% total
-                  </li>
-                  <li>
-                    30-day loans: 4% interest + applicable fees = 30% total
-                  </li>
-                </ul>
                 <p>
-                  <strong>3. Overdue Penalties:</strong> A penalty of 2% per day
-                  will be charged on the remaining outstanding loan balance for
-                  overdue payments.
+                  <strong>3. Overdue Penalties:</strong> Additional charges apply
+                  on the outstanding balance for each day a payment is overdue.
+                  Pay on time to avoid extra costs.
                 </p>
                 <p>
                   <strong>4. Payment Methods:</strong> Payments can be made via
@@ -1843,60 +1795,88 @@ const LoanApplication = () => {
               </button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="bg-red-50 rounded-xl p-3 border border-red-100">
-                <p className="text-sm text-red-700">
-                  <strong>Outstanding Balance:</strong> GHS{" "}
-                  {parseFloat(remainingBalance || 0).toFixed(2)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Payment Type
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    {
-                      value: "full",
-                      label: `💰 Full — GHS ${parseFloat(remainingBalance || 0).toFixed(2)}`,
-                    },
-                    { value: "partial", label: "💸 Partial" },
-                  ].map((opt) => (
-                    <label
-                      key={opt.value}
-                      className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${paymentType === opt.value ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}`}
-                    >
-                      <input
-                        type="radio"
-                        name="paymentType"
-                        value={opt.value}
-                        checked={paymentType === opt.value}
-                        onChange={(e) => setPaymentType(e.target.value)}
-                        className="accent-blue-600"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        {opt.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {paymentType === "partial" && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Payment Amount (GHS)
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                    placeholder="Enter amount"
-                    min="0.01"
-                    max={remainingBalance}
-                    step="0.01"
-                  />
-                </div>
-              )}
+              {(() => {
+                const _bal2 = parseFloat(remainingBalance || 0);
+                const _fee2 = parseFloat(activeLoan?.totalOverdueFee || activeLoan?.overdueAmount || 0);
+                const _total2 = _bal2 + _fee2;
+                return (
+                  <>
+                    <div className={`rounded-xl p-3 border ${activeLoan?.isOverdue ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-100"}`}>
+                      {activeLoan?.isOverdue ? (
+                        <div className="text-xs text-amber-800 space-y-0.5">
+                          <div className="flex justify-between">
+                            <span>Principal balance</span>
+                            <span>GHS {_bal2.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Late fee ({activeLoan.overdueDays}d × 5%)</span>
+                            <span>GHS {_fee2.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between font-semibold border-t border-amber-200 pt-0.5 mt-0.5 text-sm">
+                            <span>⚠️ Total to clear</span>
+                            <span>GHS {_total2.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-red-700">
+                          <strong>Outstanding Balance:</strong> GHS {_total2.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        Payment Type
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          {
+                            value: "full",
+                            label: `💰 Full — GHS ${_total2.toFixed(2)}`,
+                          },
+                          { value: "partial", label: "💸 Partial" },
+                        ].map((opt) => (
+                          <label
+                            key={opt.value}
+                            className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${paymentType === opt.value ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}`}
+                          >
+                            <input
+                              type="radio"
+                              name="paymentType"
+                              value={opt.value}
+                              checked={paymentType === opt.value}
+                              onChange={(e) => setPaymentType(e.target.value)}
+                              className="accent-blue-600"
+                            />
+                            <span className="text-sm font-medium text-gray-700">
+                              {opt.label}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    {paymentType === "partial" && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                          Payment Amount (GHS)
+                        </label>
+                        <input
+                          type="number"
+                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={paymentAmount}
+                          onChange={(e) => setPaymentAmount(e.target.value)}
+                          placeholder="Enter amount"
+                          min="0.01"
+                          max={_total2}
+                          step="0.01"
+                        />
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          Max: GHS {_total2.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                   Mobile Money Provider
@@ -1911,19 +1891,20 @@ const LoanApplication = () => {
                   <option value="AirtelTigo">📞 AirtelTigo Money</option>
                 </select>
               </div>
+              {/* Mobile number — read-only; tied to KYC-verified phone */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                  Mobile Number
+                  Mobile Money Number
                 </label>
                 <input
                   type="tel"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-600 cursor-not-allowed"
+                  className="w-full border border-gray-100 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
                   value={mobileNumber}
+                  readOnly
                   disabled
-                  maxLength="10"
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
-                  This number is loaded from your verified profile and cannot be changed here.
+                  Your verified account number. To update it, go to Profile → KYC.
                 </p>
               </div>
               {paymentHistory.length > 0 && (

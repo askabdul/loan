@@ -143,7 +143,7 @@ export const ConfigProvider = ({ children }) => {
       return feeStructure.commitment_fee_rate * 100; // Convert to percentage
     }
     
-    // Fallback to individual keys for backward compatibility
+    // Keys stored as {type}_{term}_days  (e.g. interest_rate_7_days)
     const key = `${type}_${term}_days`;
     return getConfig(key, 0);
   }, [getConfig]);

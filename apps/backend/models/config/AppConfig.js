@@ -89,6 +89,34 @@ const CONFIG_KEYS = [
   "maxLoginAttempts",
   "lockoutDuration",
   "enableTwoFactor",
+  // Term-specific fee rates (canonical: {type}_{term}_days)
+  "interest_rate_7_days",
+  "service_fee_7_days",
+  "admin_fee_7_days",
+  "commitment_fee_7_days",
+  "interest_rate_14_days",
+  "service_fee_14_days",
+  "admin_fee_14_days",
+  "commitment_fee_14_days",
+  "interest_rate_30_days",
+  "service_fee_30_days",
+  "admin_fee_30_days",
+  "commitment_fee_30_days",
+  "overdue_fee_daily_pct",
+  "enable_extension",
+  // Contact info
+  "support_phone",
+  "support_email",
+  "support_whatsapp",
+  "office_address",
+  "business_hours",
+  "emergency_contact",
+  // App branding
+  "app_tagline",
+  "app_description",
+  "company_name",
+  "company_logo_url",
+  "app_version",
 ];
 
 const AppConfig = sequelize.define(

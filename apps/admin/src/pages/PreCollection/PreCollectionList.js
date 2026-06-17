@@ -391,20 +391,28 @@ const PreCollectionList = () => {
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — officers only see their own work queues; leads see all including unassigned */}
       <div className="flex gap-1 mb-5 bg-white border border-gray-200 rounded-xl p-1 w-fit flex-wrap">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => {
-              setActiveTab(tab.key);
-              setPage(1);
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TABS
+          .filter((tab) => {
+            if (isPrecollectionOfficer) {
+              // Officers only see: Assigned (their cases), Processed, Hung Up, Completed
+              return ["assigned", "processed", "hung-up", "completed"].includes(tab.key);
+            }
+            return true;
+          })
+          .map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
       </div>
 
       {/* Search */}
@@ -459,13 +467,15 @@ const PreCollectionList = () => {
               </tr>
             ) : loans.length === 0 ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-16 text-center text-sm text-gray-400"
-                >
-                  No{" "}
-                  {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()}{" "}
-                  cases found.
+                <td colSpan={6} className="px-4 py-16 text-center">
+                  <p className="text-sm text-gray-400 mb-1">
+                    No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} cases found.
+                  </p>
+                  {isPrecollectionOfficer && activeTab === "assigned" && (
+                    <p className="text-xs text-gray-300">
+                      Your pre-collection lead will assign cases to you. Check back soon.
+                    </p>
+                  )}
                 </td>
               </tr>
             ) : (

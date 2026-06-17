@@ -1483,3 +1483,7 @@
     flex-wrap: wrap;
   }
 }
+/* Disbursement status badges */
+.dm-badge-processing { color: #b45309; font-weight: 600; }
+.dm-badge-failed     { color: #dc2626; font-weight: 600; }
+.dm-badge-sent       { color: #059669; font-weight: 600; }

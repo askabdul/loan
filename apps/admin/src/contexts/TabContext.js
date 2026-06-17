@@ -9,6 +9,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 const TabContext = createContext();
 
+export { clearTabStorage };
+
 export const useTab = () => {
   const context = useContext(TabContext);
   if (!context) {
@@ -68,9 +70,21 @@ const getRouteTitle = (path) => {
 const STORAGE_KEY = "cedi_admin_tabs";
 const EXCLUDED_TAB_PATHS = new Set(["/login", "/logout", "/register"]);
 
+const normalizePath = (path) => {
+  if (!path) return "";
+  return path.split("?")[0].split("#")[0].replace(/\/+$/, "");
+};
+
 const isTabEligiblePath = (path) => {
-  if (!path || path === "/") return false;
-  return !EXCLUDED_TAB_PATHS.has(path);
+  const normalized = normalizePath(path);
+  if (!normalized || normalized === "/") return false;
+  return !EXCLUDED_TAB_PATHS.has(normalized);
+};
+
+const clearTabStorage = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (_) {}
 };
 
 const loadFromStorage = () => {
@@ -105,6 +119,16 @@ export const TabProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState(initial.activeTab);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // When a different user logs in, wipe the previous user's open tabs from state
+  useEffect(() => {
+    const handleSessionReset = () => {
+      setTabs([]);
+      setActiveTab(null);
+    };
+    window.addEventListener('admin:session-reset', handleSessionReset);
+    return () => window.removeEventListener('admin:session-reset', handleSessionReset);
+  }, []);
 
   // Persist whenever tabs or activeTab change
   useEffect(() => {

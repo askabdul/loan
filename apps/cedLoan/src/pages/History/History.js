@@ -237,21 +237,7 @@ const History = () => {
                 </p>
               </div>
 
-              {/* Extend Loan button for active non-overdue loans */}
-              {transaction.type === "loan" &&
-                transaction.status === "active" &&
-                !transaction.isOverdue && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
-                    <button
-                      className="inline-flex items-center gap-1.5 text-sm text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors rounded-xl px-4 py-2 font-semibold"
-                      onClick={() =>
-                        navigate(`/loan-extension/${transaction.id}`)
-                      }
-                    >
-                      📅 Extend Loan
-                    </button>
-                  </div>
-                )}
+              {/* Extension removed per business decision */}
 
               {/* Make Repayment button for active or overdue loans */}
               {transaction.type === "loan" &&

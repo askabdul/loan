@@ -117,6 +117,32 @@ const LoanInfoTab = ({ data }) => (
               : "—"
           }
         />
+        {data.status === "approved" && data.disbursementStatus && (
+          <InfoRow
+            label="Disbursement Status"
+            value={
+              <span
+                className={
+                  data.disbursementStatus === "processing"
+                    ? "dm-badge-processing"
+                    : data.disbursementStatus === "failed"
+                      ? "dm-badge-failed"
+                      : data.disbursementStatus === "sent"
+                        ? "dm-badge-sent"
+                        : undefined
+                }
+              >
+                {data.disbursementStatus === "processing"
+                  ? "⏳ Bridge processing…"
+                  : data.disbursementStatus === "failed"
+                    ? `⚠️ Failed — ${data.disbursementFailureReason || "see notes"}`
+                    : data.disbursementStatus === "sent"
+                      ? "✅ Sent"
+                      : data.disbursementStatus}
+              </span>
+            }
+          />
+        )}
         <InfoRow
           label="Due Date"
           value={
@@ -388,8 +414,7 @@ const DetailModal = ({
   onDisburse,
   onActivate,
 }) => {
-  const { hasActionPermission, user } = useAuth();
-  const canUpdateLoanStatus = hasActionPermission("updateLoanStatus");
+  const { isSuperAdmin, user } = useAuth();
   const [activeTab, setActiveTab] = useState("info");
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewAction, setReviewAction] = useState("");
@@ -398,21 +423,31 @@ const DetailModal = ({
 
   if (!isOpen || !data) return null;
 
-  // Review actions (approve/reject/hang-up) available for pending/under-review/assigned
+  // Role-based access — only review officers own the credit-decision workflow.
+  // Super-admin retains a full override for exceptional cases.
   const roleName = user?.role?.name || user?.Role?.name;
-  const canReviewOfficerDecide = roleName === "review-officer";
+  const isReviewOfficer = roleName === "review-officer";
+  const canDecide = isReviewOfficer || isSuperAdmin();
 
+  // Approve / Reject / Hang-up: review-officer or super-admin only
   const canReview =
-    canReviewOfficerDecide &&
+    canDecide &&
     !readOnly &&
     ["pending", "under-review", "assigned"].includes(data.status) &&
     (onApprove || onReject || onHangUp);
 
-  // Disbursement action available for approved loans
-  const canDisburse = !readOnly && data.status === "approved" && onDisburse;
+  // Manual disbursement: review-officer or super-admin
+  // (auto-disbursement via Bridge API fires on approval; this button is only
+  // shown for manual sends when Bridge is not configured or has failed)
+  const canDisburse =
+    canDecide &&
+    !readOnly &&
+    data.status === "approved" &&
+    onDisburse;
 
-  // Activate action available for disbursed loans
-  const canActivate = !readOnly && data.status === "disbursed" && onActivate;
+  // Activate: review-officer or super-admin, same ownership as disburse
+  const canActivate =
+    canDecide && !readOnly && data.status === "disbursed" && onActivate;
 
   const canAction = canReview || canDisburse || canActivate;
 
@@ -525,9 +560,13 @@ const DetailModal = ({
                 <span className="dm-actions-label">
                   <FiClock size={13} />
                   {canDisburse
-                    ? customerRequestedDisbursement
-                      ? " Customer requested disbursement"
-                      : " Approved — awaiting disbursement"
+                    ? data.disbursementStatus === "processing"
+                      ? " ⏳ Bridge disbursement in progress — awaiting MoMo confirmation"
+                      : data.disbursementStatus === "failed"
+                        ? " ⚠️ Bridge disbursement failed — manual send required"
+                        : customerRequestedDisbursement
+                          ? " Customer requested disbursement"
+                          : " Approved — awaiting disbursement"
                     : canActivate
                       ? customerConfirmedReceipt
                         ? " Customer confirmed receipt — ready to activate"
@@ -536,47 +575,44 @@ const DetailModal = ({
                 </span>
                 <div className="dm-action-btns">
                   {/* Review actions */}
-                  {canReview &&
-                    canUpdateLoanStatus &&
-                    onApprove && (
-                      <button
-                        className="dm-btn dm-btn-approve"
-                        onClick={() => handleAction("approve")}
-                      >
-                        <FiCheckCircle size={14} /> Approve
-                      </button>
-                    )}
-                  {canReview &&
-                    canUpdateLoanStatus &&
-                    onReject && (
-                      <button
-                        className="dm-btn dm-btn-reject"
-                        onClick={() => handleAction("reject")}
-                      >
-                        <FiX size={14} /> Reject
-                      </button>
-                    )}
-                  {canReview &&
-                    canUpdateLoanStatus &&
-                    onHangUp && (
-                      <button
-                        className="dm-btn dm-btn-hangup"
-                        onClick={() => handleAction("hangup")}
-                      >
-                        <FiAlertCircle size={14} /> Hang Up
-                      </button>
-                    )}
-                  {/* Disbursement action */}
-                  {canDisburse && canUpdateLoanStatus && (
+                  {canReview && onApprove && (
+                    <button
+                      className="dm-btn dm-btn-approve"
+                      onClick={() => handleAction("approve")}
+                    >
+                      <FiCheckCircle size={14} /> Approve
+                    </button>
+                  )}
+                  {canReview && onReject && (
+                    <button
+                      className="dm-btn dm-btn-reject"
+                      onClick={() => handleAction("reject")}
+                    >
+                      <FiX size={14} /> Reject
+                    </button>
+                  )}
+                  {canReview && onHangUp && (
+                    <button
+                      className="dm-btn dm-btn-hangup"
+                      onClick={() => handleAction("hangup")}
+                    >
+                      <FiAlertCircle size={14} /> Hang Up
+                    </button>
+                  )}
+                  {/* Manual disbursement — only show if Bridge is not actively processing */}
+                  {canDisburse && data.disbursementStatus !== "processing" && (
                     <button
                       className="dm-btn dm-btn-disburse"
                       onClick={() => handleAction("disburse")}
                     >
-                      <FiDollarSign size={14} /> Disburse Loan
+                      <FiDollarSign size={14} />
+                      {data.disbursementStatus === "failed"
+                        ? " Retry / Manual Send"
+                        : " Disburse Loan"}
                     </button>
                   )}
                   {/* Activate action */}
-                  {canActivate && canUpdateLoanStatus && (
+                  {canActivate && (
                     <button
                       className="dm-btn dm-btn-activate"
                       title="Confirm the customer has received the funds and start the repayment clock"

@@ -196,40 +196,25 @@ class ApiService {
   // Get Users List for Admin Management
   async getUsersList(params = {}) {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        search = "",
-        status = "all",
-        loanLevel = "all",
-        sortBy = "createdAt",
-        sortOrder = "desc",
-      } = params;
+      const { page = 1, limit = 10, search, status, level, sortBy = "created_at", sortOrder = "desc" } = params;
+      const queryParams = { page, limit, sortBy, sortOrder };
+      if (search) queryParams.search = search;
+      if (status) queryParams.status = status;
+      if (level) queryParams.level = level;
 
-      const queryParams = {
-        page,
-        limit,
-        search,
-        status,
-        loanLevel,
-        sortBy,
-        sortOrder,
-      };
-
-      const response = await api.get("/admin/users", {
-        params: queryParams,
-      });
-      return response.data;
+      const response = await api.get("/admin/users", { params: queryParams });
+      // Backend returns { success, data: { users, pagination } }
+      return response.data.data || response.data;
     } catch (error) {
       console.error("Error fetching users list:", error);
       throw error;
     }
   }
 
-  // Update user information
+  // Update user information (flat fields matching the User model)
   async updateUserInfo(userId, userData) {
     try {
-      const response = await api.put(`/users/${userId}/info`, userData);
+      const response = await api.put(`/admin/users/${userId}`, userData);
       return response.data;
     } catch (error) {
       console.error("Error updating user info:", error);
@@ -237,13 +222,24 @@ class ApiService {
     }
   }
 
-  // Reset user PIN
+  // Reset user PIN via admin endpoint
   async resetUserPin(userId, pinData) {
     try {
-      const response = await api.put(`/users/${userId}/reset-pin`, pinData);
+      const response = await api.put(`/admin/users/${userId}/reset-pin`, pinData);
       return response.data;
     } catch (error) {
       console.error("Error resetting user PIN:", error);
+      throw error;
+    }
+  }
+
+  // Update user level via admin endpoint
+  async adminSetUserLevel(userId, level) {
+    try {
+      const response = await api.patch(`/admin/users/${userId}/level`, { level });
+      return response.data;
+    } catch (error) {
+      console.error("Error updating user level:", error);
       throw error;
     }
   }

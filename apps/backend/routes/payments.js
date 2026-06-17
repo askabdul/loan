@@ -1,25 +1,23 @@
 const express = require("express");
-const axios = require("axios");
-const { Op, fn, col, literal } = require("sequelize");
+const { Op, fn, col } = require("sequelize");
 const { body, validationResult } = require("express-validator");
 const { Payment, Loan, User } = require("../models");
 const { auth } = require("../middleware/auth");
 const { checkAndPromoteLevel } = require("../services/levelProgressionService");
+const {
+  BRIDGE_SUCCESS_CODE,
+  BRIDGE_FAILED_CODE,
+  BRIDGE_PENDING_CODE,
+  BRIDGE_CANCELLED_CODE,
+  initiateBridgeCollection,
+  syncPaymentFromBridgeStatus: syncFromBridge,
+} = require("../services/bridgeService");
+const {
+  getLoanLifecycleSettings,
+  calculateOverdueDays,
+} = require("../services/loanLifecycleSettings");
 
 const router = express.Router();
-
-const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://api.bridgeagw.com";
-const BRIDGE_PAYMENT_PATH = "/make_payment";
-const BRIDGE_TXN_STATUS_PATH = "/get_transaction_status";
-const BRIDGE_SUCCESS_CODE = "000";
-const BRIDGE_FAILED_CODE = "001";
-const BRIDGE_PENDING_CODE = "002";
-const BRIDGE_CANCELLED_CODE = "003";
-const NETWORK_MAP = {
-  MTN: "MTN",
-  Telecel: "VOD",
-  AirtelTigo: "AIR",
-};
 
 function calculateCalendarDueDate(activationDate, termInDays) {
   const due = new Date(activationDate);
@@ -28,98 +26,9 @@ function calculateCalendarDueDate(activationDate, termInDays) {
   return due;
 }
 
-function formatBridgeRequestTime(date = new Date()) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
-function getBridgeAuthHeader() {
-  const basicAuth = process.env.BRIDGE_BASIC_AUTH?.trim();
-  if (basicAuth) {
-    return basicAuth.startsWith("Basic ") ? basicAuth : `Basic ${basicAuth}`;
-  }
-
-  const username = process.env.BRIDGE_USERNAME;
-  const password = process.env.BRIDGE_PASSWORD;
-  if (!username || !password) return null;
-
-  const encoded = Buffer.from(`${username}:${password}`).toString("base64");
-  return `Basic ${encoded}`;
-}
-
-function buildCallbackUrl(req) {
-  if (process.env.BRIDGE_CALLBACK_URL) return process.env.BRIDGE_CALLBACK_URL;
-
-  const publicBaseUrl = process.env.BACKEND_PUBLIC_URL;
-  if (publicBaseUrl) {
-    return `${publicBaseUrl.replace(/\/$/, "")}/api/payments/webhook`;
-  }
-
-  const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
-  const host = req.get("host");
-  return `${protocol}://${host}/api/payments/webhook`;
-}
-
-async function callBridgeApi(path, payload, timeoutMs = 20000) {
-  const authHeader = getBridgeAuthHeader();
-  const serviceId = parseInt(process.env.BRIDGE_SERVICE_ID || "", 10);
-
-  if (!authHeader) {
-    throw new Error(
-      "Bridge credentials missing. Set BRIDGE_BASIC_AUTH or BRIDGE_USERNAME/BRIDGE_PASSWORD.",
-    );
-  }
-
-  if (!Number.isFinite(serviceId)) {
-    throw new Error("BRIDGE_SERVICE_ID is missing or invalid.");
-  }
-
-  const response = await axios.post(
-    `${BRIDGE_BASE_URL}${path}`,
-    { service_id: serviceId, ...payload },
-    {
-      timeout: timeoutMs,
-      headers: {
-        Authorization: authHeader,
-        "Content-Type": "application/json",
-      },
-      validateStatus: () => true,
-    },
-  );
-
-  return response;
-}
-
-function getBridgeStatusCode(data) {
-  if (!data) return null;
-  return (
-    String(data.response_code || "") ||
-    String(data.response_data?.status || "") ||
-    String(data.status || "")
-  );
-}
-
-function getBridgeStatusMessage(data) {
-  if (!data) return "No response body from Bridge API";
-  return (
-    data.response_message ||
-    data.response_data?.status_desc ||
-    data.status_desc ||
-    data.message ||
-    "Bridge request processed"
-  );
-}
-
 async function syncPaymentFromBridgeStatus(payment, req = null) {
-  const timeoutMs = parseInt(process.env.BRIDGE_TIMEOUT_MS || "20000", 10);
-  const response = await callBridgeApi(
-    BRIDGE_TXN_STATUS_PATH,
-    { transaction_id: payment.transactionId },
-    timeoutMs,
-  );
-  const statusBody = response.data || {};
-  const statusCode = getBridgeStatusCode(statusBody);
-  const statusMessage = getBridgeStatusMessage(statusBody);
+  const { statusCode, statusMessage, raw: statusBody, response } =
+    await syncFromBridge(payment, req);
   const gatewayResponse = {
     ...(payment.gatewayResponse || {}),
     statusLookup: {
@@ -150,113 +59,22 @@ async function syncPaymentFromBridgeStatus(payment, req = null) {
           status: "cancelled",
           failedAt: new Date(),
           failureReason: statusMessage,
-          gatewayResponse: {
-            ...gatewayResponse,
-            responseCode: statusCode,
-            responseMessage: statusMessage,
-            rawResponse: statusBody,
-          },
+          gatewayResponse: { ...gatewayResponse, responseCode: statusCode, responseMessage: statusMessage, rawResponse: statusBody },
         });
       } else {
-        await payment.markAsFailed(statusMessage, {
-          ...gatewayResponse,
-          responseCode: statusCode,
-          responseMessage: statusMessage,
-          rawResponse: statusBody,
-        });
+        await payment.markAsFailed(statusMessage, { ...gatewayResponse, responseCode: statusCode, responseMessage: statusMessage, rawResponse: statusBody });
       }
     }
   } else if (statusCode === BRIDGE_PENDING_CODE) {
     if (["pending", "processing"].includes(payment.status)) {
       await payment.update({
         status: "processing",
-        gatewayResponse: {
-          ...gatewayResponse,
-          responseCode: statusCode,
-          responseMessage: statusMessage,
-          rawResponse: statusBody,
-        },
+        gatewayResponse: { ...gatewayResponse, responseCode: statusCode, responseMessage: statusMessage, rawResponse: statusBody },
       });
     }
   }
 
   return { statusCode, statusMessage, raw: statusBody };
-}
-
-async function initiateBridgeCollection({ payment, loan, req, user }) {
-  const timeoutMs = parseInt(process.env.BRIDGE_TIMEOUT_MS || "20000", 10);
-  const providerCode = NETWORK_MAP[payment.mobileMoneyProvider];
-  if (!providerCode) {
-    throw new Error(
-      `Unsupported mobile money provider: ${payment.mobileMoneyProvider}`,
-    );
-  }
-
-  const callbackUrl = buildCallbackUrl(req);
-  const nickname =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "CEDI Customer";
-  const payload = {
-    reference: `Loan payment ${loan?.loanId || payment.id}`,
-    customer_number: payment.mobileNumber,
-    transaction_id: payment.transactionId,
-    trans_type: "CTM",
-    amount: parseFloat(payment.amount),
-    nw: providerCode,
-    nickname,
-    payment_option: "MOM",
-    currency_code: process.env.BRIDGE_CURRENCY_CODE || "GHS",
-    currency_val: process.env.BRIDGE_CURRENCY_VALUE || "1",
-    callback_url: callbackUrl,
-    request_time: formatBridgeRequestTime(new Date()),
-  };
-
-  const response = await callBridgeApi(BRIDGE_PAYMENT_PATH, payload, timeoutMs);
-  const responseBody = response.data || {};
-  const responseCode = getBridgeStatusCode(responseBody);
-  const responseMessage = getBridgeStatusMessage(responseBody);
-
-  const accepted =
-    response.status < 400 &&
-    ["202", BRIDGE_SUCCESS_CODE, BRIDGE_PENDING_CODE].includes(responseCode);
-
-  if (accepted) {
-    await payment.update({
-      status: "processing",
-      gatewayResponse: {
-        ...(payment.gatewayResponse || {}),
-        initiatedAt: new Date().toISOString(),
-        responseCode,
-        responseMessage,
-        httpStatus: response.status,
-        callbackUrl,
-        providerCode,
-        requestPayload: {
-          ...payload,
-          service_id: undefined,
-        },
-        rawResponse: responseBody,
-      },
-    });
-  } else {
-    await payment.markAsFailed(responseMessage, {
-      ...(payment.gatewayResponse || {}),
-      responseCode,
-      responseMessage,
-      httpStatus: response.status,
-      callbackUrl,
-      providerCode,
-      rawResponse: responseBody,
-    });
-  }
-
-  return {
-    accepted,
-    responseCode,
-    responseMessage,
-    responseBody,
-    callbackUrl,
-    httpStatus: response.status,
-  };
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -279,10 +97,27 @@ async function processSuccessfulPayment(
       "Payment completed",
   });
 
-  const overdueFeePaid = Math.min(
-    parseFloat(payment.amount),
-    parseFloat(loan.totalOverdueFee) || 0,
-  );
+  // Use a fresh overdue fee for overdue loans so webhook processing after a
+  // delayed STK-push approval doesn't use the stale DB value from hours ago.
+  let liveOverdueFee = parseFloat(loan.totalOverdueFee) || 0;
+  if (loan.status === "overdue") {
+    try {
+      const settings = await getLoanLifecycleSettings();
+      const freshDays = calculateOverdueDays({
+        dueDate: loan.dueDate,
+        now: new Date(),
+        mode: settings.overdueDayCountMode,
+      });
+      const dailyRate = (parseFloat(loan.overdueFeePct) || 2) / 100;
+      liveOverdueFee =
+        Math.round(
+          parseFloat(loan.remainingBalance || 0) * dailyRate * freshDays * 100,
+        ) / 100;
+    } catch (_) {
+      // fall back to whatever is stored
+    }
+  }
+  const overdueFeePaid = Math.min(parseFloat(payment.amount), liveOverdueFee);
   const principalPaid = parseFloat(payment.amount) - overdueFeePaid;
 
   const updates = {
@@ -381,7 +216,7 @@ router.post(
         where: {
           id: loanId,
           userId: req.user.id,
-          status: { [Op.in]: ["approved", "active"] },
+          status: { [Op.in]: ["approved", "active", "overdue"] },
         },
       });
       if (!loan)
@@ -392,10 +227,26 @@ router.post(
             message: "Loan not found or not eligible for payment.",
           });
 
-      loan.updateOverdueStatus();
-      const totalOwed =
-        parseFloat(loan.remainingBalance) +
-        parseFloat(loan.totalOverdueFee || 0);
+      // For overdue loans compute the current fee dynamically; for active/approved
+      // use the instance method which reads nextPaymentDate.
+      let currentOverdueFee = 0;
+      if (loan.status === "overdue") {
+        const settings = await getLoanLifecycleSettings();
+        const freshDays = calculateOverdueDays({
+          dueDate: loan.dueDate,
+          now: new Date(),
+          mode: settings.overdueDayCountMode,
+        });
+        const dailyRate = (parseFloat(loan.overdueFeePct) || 2) / 100;
+        currentOverdueFee =
+          Math.round(
+            parseFloat(loan.remainingBalance || 0) * dailyRate * freshDays * 100,
+          ) / 100;
+      } else {
+        loan.updateOverdueStatus();
+        currentOverdueFee = parseFloat(loan.totalOverdueFee || 0);
+      }
+      const totalOwed = parseFloat(loan.remainingBalance) + currentOverdueFee;
       const amt = parseFloat(amount);
 
       if (paymentType === "full" && amt < totalOwed) {
