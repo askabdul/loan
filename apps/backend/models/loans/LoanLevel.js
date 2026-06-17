@@ -41,26 +41,28 @@ const LoanLevel = sequelize.define(
       defaultValue: 1,
       validate: { min: 0 },
     },
-    // ── Rate Configuration ───────────────────────────────────────────
+    // ── Rate Configuration (all flat % of principal per term) ────────
+    // Default breakdown: interest 9% + service 12% + admin 12% + commitment 12% = 45%
     interestRate: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
-      validate: { min: 0, max: 50 },
+      defaultValue: 9,
+      validate: { min: 0, max: 100 },
     },
     serviceFeePct: {
       type: DataTypes.DECIMAL(5, 2),
-      defaultValue: 1,
-      validate: { min: 0, max: 5 },
+      defaultValue: 12,
+      validate: { min: 0, max: 100 },
     },
     administrationFeePct: {
       type: DataTypes.DECIMAL(5, 2),
-      defaultValue: 0.5,
-      validate: { min: 0, max: 2 },
+      defaultValue: 12,
+      validate: { min: 0, max: 100 },
     },
     commitmentFeePct: {
       type: DataTypes.DECIMAL(5, 2),
-      defaultValue: 0.5,
-      validate: { min: 0, max: 2 },
+      defaultValue: 12,
+      validate: { min: 0, max: 100 },
     },
     processingFeeRate: {
       type: DataTypes.DECIMAL(5, 2),

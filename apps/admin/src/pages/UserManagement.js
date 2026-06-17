@@ -33,6 +33,8 @@ const UserManagement = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetPinModal, setShowResetPinModal] = useState(false);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [userToDeactivate, setUserToDeactivate] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [newPin, setNewPin] = useState("");
 
@@ -43,23 +45,17 @@ const UserManagement = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const params = {
+      const response = await apiService.getUsersList({
         page: currentPage,
         limit: 10,
-        ...(searchTerm && { search: searchTerm }),
-        ...(filterStatus && { status: filterStatus }),
-        ...(filterLevel && { level: filterLevel }),
-      };
-
-      const response = await apiService.getUsersList(params);
+        search: searchTerm || undefined,
+        status: filterStatus || undefined,
+        level: filterLevel || undefined,
+      });
+      // getUsersList normalises to { users, pagination }
       setUsers(response.users || []);
       setPagination(
-        response.pagination || {
-          total: 0,
-          pages: 1,
-          currentPage: 1,
-          limit: 10,
-        },
+        response.pagination || { total: 0, pages: 1, currentPage: 1, limit: 10 },
       );
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -87,11 +83,11 @@ const UserManagement = () => {
   const handleEditUser = (user) => {
     setSelectedUser(user);
     setEditFormData({
-      firstName: user.personalInfo?.firstName || "",
-      lastName: user.personalInfo?.lastName || "",
-      phone: user.phone || "",
-      email: user.personalInfo?.email || "",
-      currentLevel: user.currentLevel || 1,
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      phoneNumber: user.phoneNumber || "",
+      email: user.email || "",
+      currentLoanLevel: user.currentLoanLevel || 1,
     });
     setShowEditModal(true);
   };
@@ -102,13 +98,21 @@ const UserManagement = () => {
     setShowResetPinModal(true);
   };
 
-  const handleToggleStatus = async (user) => {
+  const handleToggleStatus = (user) => {
+    if (user.isActive) {
+      // Deactivating — require confirmation first
+      setUserToDeactivate(user);
+      setShowDeactivateConfirm(true);
+    } else {
+      // Reactivating — no confirmation needed
+      applyToggleStatus(user, true);
+    }
+  };
+
+  const applyToggleStatus = async (user, newStatus) => {
     try {
-      const newStatus = !user.isActive;
-      await apiService.updateUserStatus(user._id, { isActive: newStatus });
-      toast.success(
-        `User ${newStatus ? "activated" : "deactivated"} successfully`,
-      );
+      await apiService.updateUserStatus(user.id, newStatus);
+      toast.success(`User ${newStatus ? "activated" : "deactivated"} successfully`);
       fetchUsers();
     } catch (error) {
       console.error("Error updating user status:", error);
@@ -119,16 +123,19 @@ const UserManagement = () => {
   const handleSaveEdit = async () => {
     try {
       const updateData = {
-        personalInfo: {
-          firstName: editFormData.firstName,
-          lastName: editFormData.lastName,
-          email: editFormData.email,
-        },
-        phone: editFormData.phone,
-        currentLevel: editFormData.currentLevel,
+        firstName: editFormData.firstName,
+        lastName: editFormData.lastName,
+        email: editFormData.email,
+        phoneNumber: editFormData.phoneNumber,
       };
 
-      await apiService.updateUserInfo(selectedUser._id, updateData);
+      await apiService.updateUserInfo(selectedUser.id, updateData);
+
+      // Update loan level separately if it changed
+      if (editFormData.currentLoanLevel !== selectedUser.currentLoanLevel) {
+        await apiService.adminSetUserLevel(selectedUser.id, editFormData.currentLoanLevel);
+      }
+
       toast.success("User information updated successfully");
       setShowEditModal(false);
       fetchUsers();
@@ -145,7 +152,7 @@ const UserManagement = () => {
         return;
       }
 
-      await apiService.resetUserPin(selectedUser._id, { newPin });
+      await apiService.resetUserPin(selectedUser.id, { newPin });
       toast.success("PIN reset successfully");
       setShowResetPinModal(false);
       setNewPin("");
@@ -210,7 +217,7 @@ const UserManagement = () => {
           />
           <input
             type="text"
-            placeholder="Search by name, phone, or user ID..."
+            placeholder="Search by user ID, name, phone, or email..."
             value={searchTerm}
             onChange={handleSearch}
             className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
@@ -327,20 +334,20 @@ const UserManagement = () => {
                 ) : (
                   users.map((user) => (
                     <tr
-                      key={user._id}
+                      key={user.id}
                       className="hover:bg-gray-50/50 transition-colors"
                     >
                       <td className="px-4 py-3 text-xs font-mono text-gray-700">
-                        {user.userId || user._id?.slice(-8)}
+                        {user.userId || user.id?.slice(-8)}
                       </td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-800">
-                        {user.personalInfo
-                          ? `${user.personalInfo.firstName} ${user.personalInfo.lastName}`
+                        {user.firstName || user.lastName
+                          ? `${user.firstName || ""} ${user.lastName || ""}`.trim()
                           : "N/A"}
                       </td>
                       {hasDataAccess("users", "phone") && (
                         <td className="px-4 py-3 text-sm text-gray-600">
-                          {user.phone || "N/A"}
+                          {user.phoneNumber || "N/A"}
                         </td>
                       )}
                       <td className="px-4 py-3 text-xs text-gray-500">
@@ -348,7 +355,7 @@ const UserManagement = () => {
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                          Level {user.currentLevel || 1}
+                          Level {user.currentLoanLevel || 1}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -485,7 +492,7 @@ const UserManagement = () => {
                 {[
                   { label: "First Name", field: "firstName", type: "text" },
                   { label: "Last Name", field: "lastName", type: "text" },
-                  { label: "Phone", field: "phone", type: "text" },
+                  { label: "Phone", field: "phoneNumber", type: "text" },
                   { label: "Email", field: "email", type: "email" },
                 ].map(({ label, field, type }) => (
                   <div key={field}>
@@ -510,11 +517,11 @@ const UserManagement = () => {
                     Loan Level
                   </label>
                   <select
-                    value={editFormData.currentLevel || 1}
+                    value={editFormData.currentLoanLevel || 1}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        currentLevel: parseInt(e.target.value),
+                        currentLoanLevel: parseInt(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
@@ -539,6 +546,91 @@ const UserManagement = () => {
                   className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition"
                 >
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Deactivate Confirmation Modal */}
+      {showDeactivateConfirm &&
+        ReactDOM.createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
+              zIndex: 1200,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "16px",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(0,0,0,0.4)",
+              }}
+              onClick={() => setShowDeactivateConfirm(false)}
+            />
+            <div
+              style={{
+                position: "relative",
+                background: "#fff",
+                borderRadius: "16px",
+                width: "100%",
+                maxWidth: "420px",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+              }}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-bold text-gray-800 m-0">
+                  Disable Account
+                </h3>
+                <button
+                  onClick={() => setShowDeactivateConfirm(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-1">
+                  Are you sure you want to disable the account for{" "}
+                  <strong className="text-gray-900">
+                    {userToDeactivate?.firstName
+                      ? `${userToDeactivate.firstName} ${userToDeactivate.lastName || ""}`.trim()
+                      : "this user"}
+                  </strong>
+                  ?
+                </p>
+                <p className="text-xs text-red-500 mt-2 m-0">
+                  The user will not be able to log in until the account is re-enabled.
+                </p>
+              </div>
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
+                <button
+                  onClick={() => setShowDeactivateConfirm(false)}
+                  className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDeactivateConfirm(false);
+                    applyToggleStatus(userToDeactivate, false);
+                  }}
+                  className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 rounded-xl hover:bg-red-700 transition"
+                >
+                  Disable Account
                 </button>
               </div>
             </div>
@@ -601,8 +693,8 @@ const UserManagement = () => {
                 <p className="text-sm text-gray-500 mb-4 m-0">
                   Reset PIN for:{" "}
                   <strong className="text-gray-800">
-                    {selectedUser?.personalInfo
-                      ? `${selectedUser.personalInfo.firstName} ${selectedUser.personalInfo.lastName}`
+                    {selectedUser?.firstName
+                      ? `${selectedUser.firstName} ${selectedUser.lastName || ""}`.trim()
                       : "User"}
                   </strong>
                 </p>

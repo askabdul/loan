@@ -634,19 +634,23 @@ const MODULE_PERMISSION_GROUPS = [
     ],
   },
   {
+    id: "loanDataAccess",
+    title: "Loan Data Visibility",
+    description: "Controls which loans are visible across Credit Review, Pre-Collection and Collection — set once, applies to all three modules",
+    menuKey: null,
+    subMenuKey: null,
+    actionKeys: [],
+    dataAccessKeys: ["viewAllLoans", "viewAssignedLoans"],
+  },
+  {
     id: "creditReview",
     title: "Credit Review",
     description: "Review list, assignment and decision operations",
     menuKey: "creditReview",
     subMenuKey: "creditReview",
     actionKeys: ["viewLoans", "assignLoan", "updateLoanStatus"],
-    dataAccessKeys: [
-      "viewAllLoans",
-      "viewAssignedLoans",
-      "loans.basic",
-      "loans.amount",
-      "loans.terms",
-    ],
+    // viewAllLoans / viewAssignedLoans live in the shared Loan Data Access group below
+    dataAccessKeys: [],
   },
   {
     id: "preCollection",
@@ -655,7 +659,7 @@ const MODULE_PERMISSION_GROUPS = [
     menuKey: "preCollection",
     subMenuKey: "preCollection",
     actionKeys: [],
-    dataAccessKeys: ["viewAllLoans", "viewAssignedLoans"],
+    dataAccessKeys: [],
   },
   {
     id: "collection",
@@ -664,7 +668,7 @@ const MODULE_PERMISSION_GROUPS = [
     menuKey: "collection",
     subMenuKey: "collection",
     actionKeys: [],
-    dataAccessKeys: ["viewAllLoans", "viewAssignedLoans"],
+    dataAccessKeys: [],
   },
   {
     id: "fundManagement",
@@ -675,7 +679,6 @@ const MODULE_PERMISSION_GROUPS = [
     actionKeys: ["managePayments"],
     dataAccessKeys: [
       "viewPayments",
-      "viewFinancialData",
       "payments",
       "payments.amount",
       "payments.provider",

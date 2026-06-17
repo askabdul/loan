@@ -160,11 +160,7 @@ const Sidebar = () => {
           path: "/order/review-repayment",
           subMenuKey: "reviewRepayment",
         },
-        {
-          title: "Extension Order",
-          path: "/order/extension",
-          subMenuKey: "extensionOrder",
-        },
+        // Extension feature disabled — removed from navigation
         {
           title: "Loan Details",
           path: "/order/loan-details",
@@ -266,7 +262,7 @@ const Sidebar = () => {
         //   subMenuKey: "assign",
         // },
         {
-          title: "All List (God Mode)",
+          title: "Full Case List",
           path: "/pre-collection/all-list",
           subMenuKey: "allList",
         },

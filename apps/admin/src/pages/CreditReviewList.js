@@ -49,6 +49,8 @@ const StatusBadge = ({ status }) => (
 
 const CreditReviewList = () => {
   const { hasActionPermission, hasDataAccess, user, isSuperAdmin } = useAuth();
+  const roleName = user?.role?.name || user?.Role?.name;
+  const isReviewOfficer = roleName === "review-officer";
   const canAssignLoans = hasActionPermission("assignLoan") || isSuperAdmin();
   const canUpdateLoanStatus =
     hasActionPermission("updateLoanStatus") || isSuperAdmin();
@@ -69,9 +71,10 @@ const CreditReviewList = () => {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [error, setError] = useState(null);
 
-  // Persist active tab across refreshes
+  // Officers default to "assigned" (their own cases); leads/admins see all including pending
+  const defaultTab = isReviewOfficer ? "assigned" : "pending-assign";
   const [activeTab, setActiveTab] = useState(
-    () => localStorage.getItem("creditReview_activeTab") || "pending-assign",
+    () => localStorage.getItem("creditReview_activeTab") || defaultTab,
   );
   const [selectedLoans, setSelectedLoans] = useState([]);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -83,9 +86,10 @@ const CreditReviewList = () => {
     setSelectedLoans([]);
   };
 
-  // Tab configurations
+  // Tab configurations — officers only see their own case tabs
   const tabs = [
-    { id: "pending-assign", label: "Pending Assign", icon: FiClock },
+    // Pending-Assign: unassigned loans — only visible to leads/admins who can assign
+    ...(!isReviewOfficer ? [{ id: "pending-assign", label: "Pending Assign", icon: FiClock }] : []),
     { id: "assigned", label: "Assigned", icon: FiUsers },
     { id: "hanged-up", label: "Hanged Up", icon: FiX },
     { id: "approved", label: "Approved", icon: FiDollarSign },
@@ -929,10 +933,15 @@ const CreditReviewList = () => {
           </div>
 
           {applications.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-gray-100">
+            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-gray-100 gap-1">
               <p className="text-gray-400 text-sm">
                 No loan applications found matching your criteria.
               </p>
+              {isReviewOfficer && activeTab === "assigned" && (
+                <p className="text-xs text-gray-300 mt-1">
+                  Your review lead will assign loan applications to you. Check back soon.
+                </p>
+              )}
             </div>
           )}
 

@@ -2,12 +2,12 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { Op, fn, col, literal } = require("sequelize");
 const { sequelize } = require("../config/database");
-const { Loan, User, LoanLevel, Payment, Notification } = require("../models");
+const { Loan, User, LoanLevel, Payment, Notification, AppConfig } = require("../models");
 const { auth, adminAuth } = require("../middleware/auth");
 const kycCheck = require("../middleware/kycCheck");
 const performanceTrackingService = require("../services/performanceTrackingService");
 const { checkAndPromoteLevel } = require("../services/levelProgressionService");
-const { getLoanLifecycleSettings } = require("../services/loanLifecycleSettings");
+const { getLoanLifecycleSettings, calculateOverdueDays } = require("../services/loanLifecycleSettings");
 
 const router = express.Router();
 
@@ -125,8 +125,9 @@ const buildDisbursementActivationUpdates = ({ loan, now, activateLoan }) => {
     disbursementFailureReason: null,
     disbursementLastAttemptAt: now,
     disbursementAttempts: (loan.disbursementAttempts || 0) + 1,
-    dueDate: calculateCalendarDueDate(now, loan.termInDays || 30),
-    remainingBalance: parseFloat(loan.totalAmount || loan.amount || 0),
+    dueDate: calculateCalendarDueDate(now, loan.termInDays || 7),
+    // remainingBalance = totalAmount - upfrontFee  (e.g. 145 - 20 = 125 for GHS 100 loan)
+    remainingBalance: parseFloat(loan.totalAmount || 0) - parseFloat(loan.upfrontFee || 0),
   };
 
   if (activateLoan) {
@@ -188,7 +189,7 @@ router.post(
   auth,
   kycCheck,
   [
-    body("amount").isNumeric().isFloat({ min: 100, max: 50000 }),
+    body("amount").isNumeric().isFloat({ min: 1, max: 50000 }),
     body("purpose").isIn([
       "business",
       "education",
@@ -290,6 +291,7 @@ router.post(
         }
       }
 
+      // Copy fee rates from the level so _calculateAmounts uses the right values
       const loan = await Loan.create({
         userId: req.user.id,
         amount,
@@ -301,6 +303,14 @@ router.post(
         isAutoApproved,
         status: initialStatus,
         approvalDate: isAutoApproved ? new Date() : null,
+        // Fee rates from the loan level (flat % of principal)
+        interestRate:         parseFloat(currentLevel.interestRate)         || 9,
+        serviceFeePct:        parseFloat(currentLevel.serviceFeePct)        || 12,
+        administrationFeePct: parseFloat(currentLevel.administrationFeePct) || 12,
+        commitmentFeePct:     parseFloat(currentLevel.commitmentFeePct)     || 12,
+        // upfrontDeductionPct: % of principal withheld at disbursement (e.g. 20%)
+        upfrontDeductionPct: await AppConfig.getConfig('upfront_deduction_pct').then(r => r ? Number(r.value) : 20).catch(() => 20),
+        overdueFeePct: await AppConfig.getConfig('overdue_fee_daily_pct').then(r => r ? Number(r.value) : 2).catch(() => 2),
       });
 
       const io = req.app.get("io");
@@ -353,9 +363,39 @@ router.get("/my-loans", auth, async (req, res) => {
       limit: limitNum,
       offset: (pageNum - 1) * limitNum,
     });
+
+    // Enrich overdue loans with fresh calculations so the frontend never shows
+    // stale overdueDays/totalOverdueFee regardless of when the hourly job ran.
+    const hasOverdue = loans.some((l) => l.status === "overdue");
+    let settings = null;
+    if (hasOverdue) {
+      settings = await getLoanLifecycleSettings();
+    }
+    const now = new Date();
+
+    const enrichedLoans = loans.map((loan) => {
+      const obj = loan.toJSON();
+      if (obj.status === "overdue" && settings) {
+        const freshDays = calculateOverdueDays({
+          dueDate: obj.dueDate,
+          now,
+          mode: settings.overdueDayCountMode,
+        });
+        const dailyRate = (parseFloat(obj.overdueFeePct) || 2) / 100;
+        const freshFee =
+          Math.round(
+            parseFloat(obj.remainingBalance || 0) * dailyRate * freshDays * 100,
+          ) / 100;
+        obj.overdueDays = freshDays;
+        obj.overdueAmount = freshFee;
+        obj.totalOverdueFee = freshFee;
+      }
+      return obj;
+    });
+
     res.json({
       success: true,
-      loans,
+      loans: enrichedLoans,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -420,7 +460,7 @@ router.get("/calculate/:amount/:duration", auth, async (req, res) => {
     if (
       !amount ||
       !duration ||
-      amount < 100 ||
+      amount < 1 ||
       amount > 50000 ||
       duration < 1 ||
       duration > 24
@@ -779,7 +819,7 @@ router.put(
           });
           updates.adminNotes = notes;
         } else if (!parseFloat(loan.remainingBalance)) {
-          updates.remainingBalance = parseFloat(loan.totalAmount || loan.amount || 0);
+          updates.remainingBalance = parseFloat(loan.totalAmount || 0) - parseFloat(loan.upfrontFee || 0);
         }
       } else if (requestedStatus === "disbursed") {
         const disbursementUpdates = buildDisbursementActivationUpdates({
@@ -1180,6 +1220,130 @@ router.put(
     }
   },
 );
+
+// POST /api/loans/bridge-disbursement-webhook (public — called by Bridge AGW)
+// Processes Bridge MTC (payout) callbacks. Bridge identifies the loan via the
+// transaction_id we stored in loan.disbursementReference.
+router.post("/bridge-disbursement-webhook", async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    // Bridge sends response_code in callbacks (same as the initiate response)
+    const transactionId =
+      payload.transaction_id || payload.transactionId;
+    const responseCode = String(
+      payload.response_code || payload.status || "",
+    );
+    const responseMessage =
+      payload.response_message ||
+      payload.status_desc ||
+      payload.message ||
+      "Bridge disbursement callback";
+
+    if (!transactionId) {
+      return res
+        .status(200)
+        .json({ success: true, message: "Missing transaction_id — ignored" });
+    }
+
+    // Match the loan using the transaction_id we stored at disbursement initiation
+    const loan = await Loan.findOne({
+      where: { disbursementReference: transactionId, status: "approved" },
+      include: [loanUserInclude],
+    });
+    if (!loan) {
+      // Already processed or not found — acknowledge so Bridge doesn't retry
+      return res
+        .status(200)
+        .json({ success: true, message: "Loan not found or already processed" });
+    }
+
+    const now = new Date();
+    const adminNotes = [...(loan.adminNotes || [])];
+
+    if (responseCode === "000") {
+      // Successful disbursement — activate loan
+      adminNotes.push({
+        note: `Bridge MTC disbursement confirmed (code ${responseCode}): ${responseMessage}`,
+        addedAt: now,
+        type: "bridge_disbursement_confirmed",
+      });
+
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
+      const disbursementUpdates = buildDisbursementActivationUpdates({
+        loan,
+        now,
+        activateLoan: loanLifecycleSettings.activateLoanOnDisbursement,
+      });
+
+      await loan.update({
+        ...disbursementUpdates,
+        disbursementStatus: "sent",
+        adminNotes,
+        disbursementGatewayResponse: {
+          transactionId,
+          responseCode,
+          responseMessage,
+          receivedAt: now.toISOString(),
+          rawPayload: payload,
+        },
+      });
+
+      const finalStatus = loanLifecycleSettings.activateLoanOnDisbursement
+        ? "active"
+        : "disbursed";
+      const io = req.app.get("io");
+      if (io && loan.userId) {
+        io.to(`user-${loan.userId}`).emit("loan-status-changed", {
+          loanId: loan.id,
+          status: finalStatus,
+          message:
+            "Your loan has been disbursed to your mobile money account. Repayment countdown has started.",
+        });
+      }
+      await createLoanNotification(loan.userId, loan, finalStatus);
+    } else if (["001", "003"].includes(responseCode)) {
+      // Failed or cancelled
+      adminNotes.push({
+        note: `Bridge MTC disbursement failed (code ${responseCode}): ${responseMessage}`,
+        addedAt: now,
+        type: "bridge_disbursement_failed",
+      });
+      await loan.update({
+        disbursementStatus: "failed",
+        disbursementFailureReason: responseMessage,
+        disbursementFailedAt: now,
+        adminNotes,
+        disbursementGatewayResponse: {
+          transactionId,
+          responseCode,
+          responseMessage,
+          receivedAt: now.toISOString(),
+          rawPayload: payload,
+        },
+      });
+    } else {
+      // Pending (002) or unknown — record and wait
+      await loan.update({
+        disbursementGatewayResponse: {
+          transactionId,
+          responseCode,
+          responseMessage,
+          receivedAt: now.toISOString(),
+          rawPayload: payload,
+        },
+      });
+    }
+
+    return res.status(200).json({ success: true, message: "Webhook processed" });
+  } catch (error) {
+    console.error("Bridge disbursement webhook error:", error);
+    // Always return 200 so Bridge doesn't retry indefinitely
+    return res
+      .status(200)
+      .json({ success: true, message: "Webhook received with error" });
+  }
+});
 
 // GET /api/loans/failed-disbursements (admin)
 // Returns approved loans that have a disbursement failure flag or are awaiting disbursement.

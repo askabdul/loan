@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import { loansAPI } from '../../services/api';
 import './LoanExtension.css';
 
@@ -10,7 +11,8 @@ const LoanExtension = () => {
   const { loanId } = useParams();
   const { user } = useAuth();
   const { showToast } = useToast();
-  
+  const { getConfig } = useConfig();
+
   const [loan, setLoan] = useState(null);
   const [extensionData, setExtensionData] = useState({
     extensionDays: '',
@@ -254,6 +256,26 @@ const LoanExtension = () => {
           <p>The requested loan could not be found.</p>
           <button onClick={() => navigate('/history')} className="btn-primary">
             Back to History
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Feature gate: extension disabled by business decision (enable_extension=false in AppConfig)
+  const extensionEnabled = getConfig('enable_extension', false) === true ||
+                           getConfig('enable_extension', false) === 'true';
+  if (!extensionEnabled) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f3f4f6', padding: 32, maxWidth: 320, width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🚫</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Extensions Not Available</h2>
+          <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 24 }}>
+            Loan extensions are not currently offered. Contact support if you need help with your repayment.
+          </p>
+          <button onClick={() => navigate('/')} style={{ width: '100%', padding: '12px 0', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            Back to Home
           </button>
         </div>
       </div>

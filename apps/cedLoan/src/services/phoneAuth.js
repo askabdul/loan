@@ -1,5 +1,5 @@
 // OTP service — calls the backend API. No Firebase / reCAPTCHA required.
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 class PhoneAuthService {
   constructor() {

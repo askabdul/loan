@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import apiService from '../services/api';
+import { clearTabStorage } from './TabContext';
 
 const AuthContext = createContext();
 
@@ -127,6 +128,10 @@ export const AuthProvider = ({ children }) => {
       const data = await apiService.login({ login: emailOrUsername, password });
 
       if (data?.success) {
+        // Clear any tabs from a previous user's session before setting new credentials
+        clearTabStorage();
+        window.dispatchEvent(new Event('admin:session-reset'));
+
         setToken(data.token);
         setUser(data.admin);
         localStorage.setItem('adminToken', data.token);
@@ -162,6 +167,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('adminToken');
     localStorage.removeItem('adminUser');
     localStorage.removeItem('adminPermissions');
+    clearTabStorage();
   };
 
   const isAuthenticated = () => {
