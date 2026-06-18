@@ -54,10 +54,8 @@ const allowedOrigins = [
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3001",
   "http://127.0.0.1:3002",
-  "https://cediloanadmin.netlify.app",
-  "https://cediloan.netlify.app",
-  "https://loan-admin-1j7k.onrender.com",
-  "https://loan-app-bxb8.onrender.com"
+  "https://cedloan.netlify.app",
+  "https://cedloan-admin.netlify.app"
 ];
 
 const corsOptions = {
