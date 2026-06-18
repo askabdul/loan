@@ -149,9 +149,9 @@ const Register = () => {
       className="cedi-bg-gradient d-flex align-items-center justify-content-center"
       style={{ minHeight: "100vh", padding: "1rem" }}
     >
-      <div className="container">
+      <div className="w-100" style={{ maxWidth: "460px" }}>
         <div className="row justify-content-center">
-          <div className="col-12 col-sm-10 col-md-8 col-lg-6">
+          <div className="col-12">
             <div className="card cedi-card shadow-lg border-0">
               <div className="card-body p-4 p-md-5">
                 <div className="text-center mb-4">

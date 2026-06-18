@@ -57,7 +57,7 @@ const allowedOrigins = [
   "https://cediloanadmin.netlify.app",
   "https://cediloan.netlify.app",
   "https://loan-admin-1j7k.onrender.com",
-  "https://loan-app-bxb8.onrender.com/login"
+  "https://loan-app-bxb8.onrender.com"
 ];
 
 const corsOptions = {

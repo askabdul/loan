@@ -112,15 +112,15 @@ router.post("/send-otp", [validPhone], async (req, res) => {
   });
 
   // TODO: integrate SMS provider (Arkesel/Twilio) for production
-  if (process.env.NODE_ENV !== "production") {
+  const exposeOtp = process.env.NODE_ENV !== "production" || process.env.EXPOSE_DEV_OTP === "true";
+  if (exposeOtp) {
     console.log(`[DEV OTP] ${phoneNumber} → ${otp}`);
   }
 
   res.json({
     success: true,
     message: "Verification code sent",
-    // Expose OTP in non-production so you can test without SMS
-    ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
+    ...(exposeOtp && { devOtp: otp }),
   });
 });
 
@@ -547,14 +547,15 @@ router.post(
       });
 
       // TODO: integrate SMS provider (Arkesel/Twilio) for production
-      if (process.env.NODE_ENV !== "production") {
+      const exposeOtp = process.env.NODE_ENV !== "production" || process.env.EXPOSE_DEV_OTP === "true";
+      if (exposeOtp) {
         console.log(`[DEV OTP - PIN RESET] ${phone} → ${otp}`);
       }
 
       res.json({
         success: true,
         message: "Verification code sent to your phone.",
-        ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
+        ...(exposeOtp && { devOtp: otp }),
       });
     } catch (error) {
       console.error("PIN reset request error:", error);
