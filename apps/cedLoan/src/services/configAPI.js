@@ -1,16 +1,28 @@
 import axios from "axios";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 class ConfigAPI {
+  normalizeConfigObject(payload) {
+    if (!payload) return {};
+    if (Array.isArray(payload)) {
+      return payload.reduce((acc, item) => {
+        if (item?.key) acc[item.key] = item.value;
+        return acc;
+      }, {});
+    }
+    return payload;
+  }
+
   // Get all app configurations
   async getAllConfigs() {
     try {
-      const response = await axios.get(`${API_URL}/config`);
+      const response = await axios.get(`${API_URL}/config-new`);
       return response.data;
     } catch (error) {
-      console.error("Error fetching app configs:", error);
-      throw error;
+      console.error("Error fetching app configs from /config-new:", error);
+      const fallback = await axios.get(`${API_URL}/config`);
+      return fallback.data;
     }
   }
 
@@ -72,28 +84,22 @@ class ConfigAPI {
       return response.data;
     } catch (error) {
       console.error("Error fetching loan calculation params:", error);
-      // Return default values if API fails
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
+
+      const buildTerm = (termDays) => ({
+        interestRate: Number(cfg[`interest_rate_${termDays}_days`] || 0),
+        serviceFee: Number(cfg[`service_fee_${termDays}_days`] || 0),
+        adminFee: Number(cfg[`admin_fee_${termDays}_days`] || 0),
+        commitmentFee: Number(cfg[`commitment_fee_${termDays}_days`] || 0),
+      });
+
       return {
         success: true,
         data: {
-          "7_days": {
-            interestRate: 5,
-            serviceFee: 2,
-            adminFee: 1,
-            commitmentFee: 1,
-          },
-          "14_days": {
-            interestRate: 8,
-            serviceFee: 3,
-            adminFee: 1.5,
-            commitmentFee: 1.5,
-          },
-          "30_days": {
-            interestRate: 12,
-            serviceFee: 4,
-            adminFee: 2,
-            commitmentFee: 2,
-          },
+          "7_days": buildTerm(7),
+          "14_days": buildTerm(14),
+          "30_days": buildTerm(30),
         },
       };
     }
@@ -111,20 +117,16 @@ class ConfigAPI {
         `Error fetching loan calculation params for ${termDays} days:`,
         error,
       );
-      // Return default values based on term
-      const defaults = {
-        7: { interestRate: 5, serviceFee: 2, adminFee: 1, commitmentFee: 1 },
-        14: {
-          interestRate: 8,
-          serviceFee: 3,
-          adminFee: 1.5,
-          commitmentFee: 1.5,
-        },
-        30: { interestRate: 12, serviceFee: 4, adminFee: 2, commitmentFee: 2 },
-      };
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
-        data: defaults[termDays] || defaults[7],
+        data: {
+          interestRate: Number(cfg[`interest_rate_${termDays}_days`] || 0),
+          serviceFee: Number(cfg[`service_fee_${termDays}_days`] || 0),
+          adminFee: Number(cfg[`admin_fee_${termDays}_days`] || 0),
+          commitmentFee: Number(cfg[`commitment_fee_${termDays}_days`] || 0),
+        },
       };
     }
   }
@@ -132,19 +134,21 @@ class ConfigAPI {
   // Get contact information
   async getContactInfo() {
     try {
-      const response = await axios.get(`${API_URL}/config/contact-info`);
+      const response = await axios.get(`${API_URL}/config-new/contact-info`);
       return response.data;
     } catch (error) {
       console.error("Error fetching contact info:", error);
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
         data: {
-          phone: "+233 123 456 789",
-          email: "support@cedi.com",
-          whatsapp: "+233 123 456 789",
-          address: "Accra, Ghana",
-          businessHours: "Mon-Fri: 8AM-6PM",
-          emergency: "+233 987 654 321",
+          phone: cfg.support_phone || "",
+          email: cfg.support_email || "",
+          whatsapp: cfg.support_whatsapp || "",
+          address: cfg.office_address || "",
+          businessHours: cfg.business_hours || "",
+          emergency: cfg.emergency_contact || "",
         },
       };
     }
@@ -153,19 +157,21 @@ class ConfigAPI {
   // Get app branding information
   async getAppBranding() {
     try {
-      const response = await axios.get(`${API_URL}/config/app-branding`);
+      const response = await axios.get(`${API_URL}/config-new/app-branding`);
       return response.data;
     } catch (error) {
       console.error("Error fetching app branding:", error);
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
         data: {
-          appName: "Cedi Loan App",
-          tagline: "Quick & Easy Loans",
-          description: "Get instant loans with flexible repayment terms",
-          companyName: "Cedi Financial Services",
-          logoUrl: "",
-          version: "1.0.0",
+          appName: cfg.app_name || "CEDI Loan",
+          tagline: cfg.app_tagline || "",
+          description: cfg.app_description || "",
+          companyName: cfg.company_name || "",
+          logoUrl: cfg.company_logo_url || "",
+          version: cfg.app_version || "1.0.0",
         },
       };
     }
@@ -174,22 +180,26 @@ class ConfigAPI {
   // Get loan settings
   async getLoanSettings() {
     try {
-      const response = await axios.get(`${API_URL}/config/loan-settings`);
+      const response = await axios.get(`${API_URL}/config-new/loan-settings`);
       return response.data;
     } catch (error) {
       console.error("Error fetching loan settings:", error);
+      const all = await this.getCachedConfigs();
+      const cfg = this.normalizeConfigObject(all?.data);
       return {
         success: true,
         data: {
-          minAmount: 100,
-          maxAmount: 5000,
-          defaultCreditLimit: 2000,
-          autoApprovalLimit: 1000,
-          availableTerms: [7, 14, 30],
-          requireCollateral: false,
-          minCreditScore: 300,
-          processingFeeFlat: 0,
-          processingFeePercentage: 0,
+          minAmount: Number(cfg.min_loan_amount || 100),
+          maxAmount: Number(cfg.max_loan_amount || 5000),
+          defaultCreditLimit: Number(cfg.default_credit_limit || 2000),
+          autoApprovalLimit: Number(cfg.auto_approval_limit || 1000),
+          availableTerms: Array.isArray(cfg.loan_terms_available)
+            ? cfg.loan_terms_available
+            : [7, 14, 30],
+          requireCollateral: Boolean(cfg.require_collateral),
+          minCreditScore: Number(cfg.min_credit_score || 300),
+          processingFeeFlat: Number(cfg.processing_fee_flat || 0),
+          processingFeePercentage: Number(cfg.processing_fee_percentage || 0),
         },
       };
     }
@@ -198,37 +208,49 @@ class ConfigAPI {
   // Calculate loan fees dynamically based on current configuration
   async calculateLoanFees(amount, termDays) {
     try {
-      const paramsResponse =
-        await this.getLoanCalculationParamsForTerm(termDays);
+      const paramsResponse = await this.getLoanCalculationParamsForTerm(termDays);
       const params = paramsResponse.data;
 
       const principal = parseFloat(amount);
-      const interestAmount = (principal * params.interestRate) / 100;
-      const serviceAmount = (principal * params.serviceFee) / 100;
-      const adminAmount = (principal * params.adminFee) / 100;
-      const commitmentAmount = (principal * params.commitmentFee) / 100;
+      const r2 = (n) => Math.round(n * 100) / 100;
 
-      const totalFees =
-        interestAmount + serviceAmount + adminAmount + commitmentAmount;
-      const totalAmount = principal + totalFees;
+      const interestAmount   = r2((principal * (params.interestRate   || 0)) / 100);
+      const serviceAmount    = r2((principal * (params.serviceFee     || 0)) / 100);
+      const adminAmount      = r2((principal * (params.adminFee       || 0)) / 100);
+      const commitmentAmount = r2((principal * (params.commitmentFee  || 0)) / 100);
+      const totalFees        = r2(interestAmount + serviceAmount + adminAmount + commitmentAmount);
+
+      // upfrontDeductionPct: % of principal withheld at disbursement (from AppConfig, returned by backend)
+      const upfrontPct     = params.upfrontDeductionPct || 20;
+      const upfrontFee     = r2((principal * upfrontPct) / 100);
+      const amountReceived = r2(principal - upfrontFee);
+      // totalAmount: full obligation (principal + all fees, e.g. 145 for GHS 100 at 45%)
+      const totalAmount    = r2(principal + totalFees);
+      // repaymentAmount: what user owes after upfront is collected (e.g. 125)
+      const repaymentAmount = r2(totalAmount - upfrontFee);
 
       return {
         success: true,
         data: {
           principal,
+          upfrontPct,
+          upfrontFee,
+          amountReceived,
           fees: {
             interest: interestAmount,
             service: serviceAmount,
             admin: adminAmount,
+            processing: adminAmount,
             commitment: commitmentAmount,
             total: totalFees,
           },
           totalAmount,
+          repaymentAmount,
           breakdown: {
-            interestRate: params.interestRate,
-            serviceFeeRate: params.serviceFee,
-            adminFeeRate: params.adminFee,
-            commitmentFeeRate: params.commitmentFee,
+            interestRate:      params.interestRate   || 0,
+            serviceFeeRate:    params.serviceFee     || 0,
+            adminFeeRate:      params.adminFee       || 0,
+            commitmentFeeRate: params.commitmentFee  || 0,
           },
         },
       };
@@ -241,7 +263,9 @@ class ConfigAPI {
   // Update configuration value
   async updateConfig(key, value) {
     try {
-      const response = await axios.put(`${API_URL}/config/${key}`, { value });
+      const response = await axios.put(`${API_URL}/config-new/${key}`, {
+        value,
+      });
       // Clear cache after update
       this.clearCache();
       return response.data;

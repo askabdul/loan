@@ -20,6 +20,24 @@ import apiService from '../services/api';
 
 const LoanRateCalculation = () => {
   const { hasActionPermission, hasMenuAccess, hasSubMenuAccess } = useAuth();
+
+  const extractLoanTerms = (response) => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data?.data)) return response.data.data;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.data?.rows)) return response.data.rows;
+    return [];
+  };
+
+  const mapFeeValue = (term, keys) => {
+    for (const key of keys) {
+      const value = term?.[key];
+      if (value !== undefined && value !== null && value !== "") {
+        return Number(value) || 0;
+      }
+    }
+    return 0;
+  };
   
   // All hooks must be called before any conditional returns
   const [rates, setRates] = useState({
@@ -78,21 +96,22 @@ const LoanRateCalculation = () => {
       
       // Fetch loan terms directly from the database
       const response = await apiService.get('/loan-terms/admin');
-      const loanTermsData = response.data || [];
+      const loanTermsData = extractLoanTerms(response);
+      setLoanTerms(loanTermsData);
       
       // Initialize rates object
       const loanRates = {};
       
       // Populate rates from loan terms data
       loanTermsData.forEach(term => {
-        const termDays = term.durationDays;
+        const termDays = Number(term.durationDays);
         loanRates[termDays] = {
-          interestRate: term.interestRate || 0,
-          processingFee: term.processingFeeRate || 0,
-          serviceFee: term.serviceFeeRate || 0,
-          commitmentFee: term.commitmentFeeRate || 0,
+          interestRate: Number(term.interestRate) || 0,
+          processingFee: mapFeeValue(term, ['administrationFeePct', 'processingFeeRate']),
+          serviceFee: mapFeeValue(term, ['serviceFeePct', 'serviceFeeRate']),
+          commitmentFee: mapFeeValue(term, ['commitmentFeePct', 'commitmentFeeRate']),
           lateFee: 0, // Not stored in LoanTerm model, keeping for compatibility
-          enabled: term.enabled
+          enabled: Boolean(term.enabled)
         };
       });
       
@@ -133,8 +152,8 @@ const LoanRateCalculation = () => {
 
   const fetchLoanTerms = async () => {
     try {
-      const response = await apiService.getLoanTerms();
-      setLoanTerms(response.data || []);
+      const response = await apiService.get('/loan-terms/admin');
+      setLoanTerms(extractLoanTerms(response));
     } catch (error) {
       console.error('Error fetching loan terms:', error);
       showMessage('error', 'Failed to fetch loan terms');
@@ -150,7 +169,7 @@ const LoanRateCalculation = () => {
         return;
       }
 
-      await apiService.toggleLoanTerm(loanTerm._id);
+      await apiService.toggleLoanTerm(loanTerm.id);
       showMessage('success', `${termDays}-day loan term ${!enabled ? 'enabled' : 'disabled'} successfully`);
       
       // Update local state
@@ -208,16 +227,16 @@ const LoanRateCalculation = () => {
       // Map field names to LoanTerm model fields
       const fieldMapping = {
         'interestRate': 'interestRate',
-        'processingFee': 'processingFeeRate',
-        'serviceFee': 'serviceFeeRate',
-        'commitmentFee': 'commitmentFeeRate'
+        'processingFee': 'administrationFeePct',
+        'serviceFee': 'serviceFeePct',
+        'commitmentFee': 'commitmentFeePct'
       };
       
       const updateData = {
         [fieldMapping[field]]: value
       };
       
-      await apiService.updateLoanTerm(loanTerm._id, updateData);
+      await apiService.updateLoanTerm(loanTerm.id, updateData);
       
       setRates({
         ...rates,
@@ -260,14 +279,14 @@ const LoanRateCalculation = () => {
         if (loanTerm) {
           const updateData = {
             interestRate: termRates.interestRate,
-            processingFeeRate: termRates.processingFee,
-            serviceFeeRate: termRates.serviceFee,
-            commitmentFeeRate: termRates.commitmentFee
+            administrationFeePct: termRates.processingFee,
+            serviceFeePct: termRates.serviceFee,
+            commitmentFeePct: termRates.commitmentFee
             // Note: lateFee is not stored in LoanTerm model
           };
           
           loanTermUpdates.push(
-            apiService.updateLoanTerm(loanTerm._id, updateData)
+            apiService.updateLoanTerm(loanTerm.id, updateData)
           );
         }
       });

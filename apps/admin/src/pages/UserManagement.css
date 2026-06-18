@@ -354,7 +354,7 @@
 .modal-overlay {
   position: fixed;
   top: 0;
-  left: 250px;
+  left: 0;
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
@@ -364,14 +364,32 @@
   z-index: 9999;
 }
 
+@media (min-width: 768px) {
+  .modal-overlay {
+    left: 16rem;
+  }
+}
+
 .modal {
   background: white;
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-  width: 90%;
+  width: 92vw;
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+@media (min-width: 768px) {
+  .modal {
+    width: 60vw;
+  }
+}
+
+@media (min-width: 1200px) {
+  .modal {
+    width: 50vw;
+  }
 }
 
 .modal-header {

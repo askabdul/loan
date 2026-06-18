@@ -12,8 +12,13 @@ import {
   FiChevronDown,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
+import { useAuth } from "../../contexts/AuthContext";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const RAW_API_BASE =
+  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_BASE = RAW_API_BASE.endsWith("/api")
+  ? RAW_API_BASE
+  : `${RAW_API_BASE.replace(/\/$/, "")}/api`;
 const authHeader = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
@@ -31,11 +36,23 @@ const TABS = [
     color: "text-blue-600 bg-blue-50 border-blue-200",
   },
   {
+    key: "processed",
+    label: "Processed",
+    color: "text-purple-600 bg-purple-50 border-purple-200",
+  },
+  {
     key: "hung-up",
     label: "Hung Up",
     color: "text-red-600 bg-red-50 border-red-200",
   },
+  {
+    key: "completed",
+    label: "Completed",
+    color: "text-emerald-600 bg-emerald-50 border-emerald-200",
+  },
 ];
+
+const RESERVE_HOLD_MS = 10 * 24 * 60 * 60 * 1000;
 
 const fmt = (n) =>
   new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(
@@ -76,6 +93,19 @@ function DueBadge({ dueDate }) {
 function OfficerSelect({ officers, value, onChange }) {
   const [open, setOpen] = useState(false);
   const sel = officers.find((o) => o.id === value);
+  const officerName = (officer) => {
+    if (!officer) return "";
+    const fullName = `${officer.firstName || ""} ${officer.lastName || ""}`.trim();
+    return fullName || officer.name || officer.email || "Unnamed Officer";
+  };
+
+  const officerRoleLabel = (officer) =>
+    officer?.role?.displayName ||
+    officer?.role?.name ||
+    officer?.Role?.displayName ||
+    officer?.Role?.name ||
+    "";
+
   return (
     <div className="relative">
       <button
@@ -84,7 +114,7 @@ function OfficerSelect({ officers, value, onChange }) {
         className="flex items-center justify-between w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
         <span className={sel ? "text-gray-800" : "text-gray-400"}>
-          {sel ? `${sel.firstName} ${sel.lastName}` : "Select officer"}
+          {sel ? officerName(sel) : "Select officer"}
         </span>
         <FiChevronDown size={14} className="text-gray-400" />
       </button>
@@ -105,9 +135,9 @@ function OfficerSelect({ officers, value, onChange }) {
                 }}
                 className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition ${value === o.id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700"}`}
               >
-                {o.firstName} {o.lastName}
+                {officerName(o)}
                 <span className="ml-2 text-xs text-gray-400">
-                  {o.Role?.displayName || o.Role?.name || ""}
+                  {officerRoleLabel(o)}
                 </span>
               </button>
             ))
@@ -120,8 +150,8 @@ function OfficerSelect({ officers, value, onChange }) {
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-[250px] z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col max-h-[90vh]">
+    <div className="fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">{title}</h3>
           <button
@@ -138,7 +168,19 @@ function Modal({ title, onClose, children }) {
 }
 
 const PreCollectionList = () => {
-  const [activeTab, setActiveTab] = useState("pending-assignment");
+  const { user } = useAuth();
+  const roleName = user?.role?.name || user?.Role?.name;
+  const isLeadRole = [
+    "super-admin",
+    "admin",
+    "local-manager",
+    "precollection-lead",
+  ].includes(roleName);
+  const isPrecollectionOfficer = roleName === "precollection-officer";
+
+  const [activeTab, setActiveTab] = useState(() =>
+    isPrecollectionOfficer ? "assigned" : "pending-assignment",
+  );
   const [loans, setLoans] = useState([]);
   const [officers, setOfficers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +191,37 @@ const PreCollectionList = () => {
   const [assignModal, setAssignModal] = useState(null);
   const [assignOfficer, setAssignOfficer] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isPrecollectionOfficer) {
+      setActiveTab("assigned");
+    }
+  }, [isPrecollectionOfficer]);
+
+  const canAssignCases = isLeadRole;
+  const canReserveLoan = (loan) =>
+    isLeadRole ||
+    (isPrecollectionOfficer && loan?.precollectionOfficerId === user?.id);
+  const canUpdateStatus = (loan) =>
+    isLeadRole ||
+    (isPrecollectionOfficer && loan?.precollectionOfficerId === user?.id);
+  const canReleaseLoan = (loan) => {
+    if (loan?.precollectionStatus !== "hung-up") {
+      return (
+        isLeadRole ||
+        (isPrecollectionOfficer && loan?.precollectionOfficerId === user?.id)
+      );
+    }
+
+    const isReserver = loan?.reservedByOfficerId === user?.id;
+    if (isReserver) return true;
+
+    if (!isLeadRole) return false;
+    if (!loan?.reservedAt) return false;
+
+    const reserveAgeMs = Date.now() - new Date(loan.reservedAt).getTime();
+    return reserveAgeMs >= RESERVE_HOLD_MS;
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 400);
@@ -275,6 +348,25 @@ const PreCollectionList = () => {
     }
   };
 
+  const handleStatusUpdate = async (loanId, status) => {
+    try {
+      const res = await fetch(`${API_BASE}/precollection/cases/${loanId}/status`, {
+        method: "PATCH",
+        headers: authHeader(),
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Case moved to ${status}`);
+        fetchLoans();
+      } else {
+        toast.error(data.message || "Failed to update case status");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
@@ -299,20 +391,28 @@ const PreCollectionList = () => {
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — officers only see their own work queues; leads see all including unassigned */}
       <div className="flex gap-1 mb-5 bg-white border border-gray-200 rounded-xl p-1 w-fit flex-wrap">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => {
-              setActiveTab(tab.key);
-              setPage(1);
-            }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TABS
+          .filter((tab) => {
+            if (isPrecollectionOfficer) {
+              // Officers only see: Assigned (their cases), Processed, Hung Up, Completed
+              return ["assigned", "processed", "hung-up", "completed"].includes(tab.key);
+            }
+            return true;
+          })
+          .map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
       </div>
 
       {/* Search */}
@@ -367,13 +467,15 @@ const PreCollectionList = () => {
               </tr>
             ) : loans.length === 0 ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-16 text-center text-sm text-gray-400"
-                >
-                  No{" "}
-                  {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()}{" "}
-                  cases found.
+                <td colSpan={6} className="px-4 py-16 text-center">
+                  <p className="text-sm text-gray-400 mb-1">
+                    No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} cases found.
+                  </p>
+                  {isPrecollectionOfficer && activeTab === "assigned" && (
+                    <p className="text-xs text-gray-300">
+                      Your pre-collection lead will assign cases to you. Check back soon.
+                    </p>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -414,7 +516,7 @@ const PreCollectionList = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 flex-wrap">
-                        {activeTab === "pending-assignment" && (
+                        {activeTab === "pending-assignment" && canAssignCases && (
                           <button
                             onClick={() => {
                               setAssignModal({ loanId: loan.id });
@@ -427,30 +529,79 @@ const PreCollectionList = () => {
                         )}
                         {activeTab === "assigned" && (
                           <>
-                            <button
-                              onClick={() => {
-                                setAssignModal({ loanId: loan.id });
-                                setAssignOfficer(officer?.id || "");
-                              }}
-                              className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
-                            >
-                              Reassign
-                            </button>
-                            <button
-                              onClick={() => handleUnassign(loan.id)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
-                            >
-                              Unassign
-                            </button>
-                            <button
-                              onClick={() => handleReserve(loan.id)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
-                            >
-                              Reserve
-                            </button>
+                            {canAssignCases && (
+                              <button
+                                onClick={() => {
+                                  setAssignModal({ loanId: loan.id });
+                                  setAssignOfficer(officer?.id || "");
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
+                              >
+                                Reassign
+                              </button>
+                            )}
+                            {canUpdateStatus(loan) && (
+                              <button
+                                onClick={() =>
+                                  handleStatusUpdate(loan.id, "processed")
+                                }
+                                className="px-2.5 py-1 text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition"
+                              >
+                                Mark Processed
+                              </button>
+                            )}
+                            {canReleaseLoan(loan) && (
+                              <button
+                                onClick={() => handleUnassign(loan.id)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+                              >
+                                Unassign
+                              </button>
+                            )}
+                            {canReserveLoan(loan) && (
+                              <button
+                                onClick={() => handleReserve(loan.id)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
+                              >
+                                Reserve
+                              </button>
+                            )}
                           </>
                         )}
-                        {activeTab === "hung-up" && (
+                        {activeTab === "processed" && (
+                          <>
+                            {canUpdateStatus(loan) && (
+                              <button
+                                onClick={() =>
+                                  handleStatusUpdate(loan.id, "completed")
+                                }
+                                className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition"
+                              >
+                                Mark Completed
+                              </button>
+                            )}
+                            {canAssignCases && (
+                              <button
+                                onClick={() => {
+                                  setAssignModal({ loanId: loan.id });
+                                  setAssignOfficer(officer?.id || "");
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition"
+                              >
+                                Reassign
+                              </button>
+                            )}
+                            {canReserveLoan(loan) && (
+                              <button
+                                onClick={() => handleReserve(loan.id)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition"
+                              >
+                                Reserve
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {activeTab === "hung-up" && canReleaseLoan(loan) && (
                           <button
                             onClick={() => handleUnassign(loan.id)}
                             className="px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"

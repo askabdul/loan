@@ -51,18 +51,24 @@ const RemarkDialog = ({
       setLoading(true);
       setError('');
 
-      const response = await fetch('/api/admin/loans/add-remark', {
+      const loanId = loan?.id || loan?._id || loan?.loanId;
+      const remarkType = collectionType === 'pre-collection' ? 'precollection' : 'collection';
+
+      if (!loanId) {
+        throw new Error('Loan ID is missing for this remark');
+      }
+
+      const response = await fetch(`/api/loans/${loanId}/add-remark`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
         },
         body: JSON.stringify({
-          loanId: loan._id,
           remark: remark.trim(),
+          remarkType,
           paymentStatus,
-          paymentAmount: paymentAmount ? parseFloat(paymentAmount) : 0,
-          collectionType
+          paymentAmount: paymentAmount ? parseFloat(paymentAmount) : 0
         })
       });
 

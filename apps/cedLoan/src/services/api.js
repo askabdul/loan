@@ -1,7 +1,7 @@
 import configAPI from "./configAPI";
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 // Helper function to get auth token
 const getAuthToken = () => {
@@ -202,8 +202,8 @@ export const usersAPI = {
   },
 
   updateProfile: async (profileData) => {
-    const response = await fetch(`${API_BASE_URL}/users/me`, {
-      method: "PATCH",
+    const response = await fetch(`${API_BASE_URL}/users/personal-info`, {
+      method: "PUT",
       headers: createHeaders(),
       body: JSON.stringify(profileData),
     });
@@ -265,28 +265,6 @@ export const loansAPI = {
       method: "PUT",
       headers: createHeaders(),
     });
-    return handleResponse(response);
-  },
-
-  requestDisbursement: async (loanId) => {
-    const response = await fetch(
-      `${API_BASE_URL}/loans/${loanId}/request-disbursement`,
-      {
-        method: "POST",
-        headers: createHeaders(),
-      },
-    );
-    return handleResponse(response);
-  },
-
-  confirmReceipt: async (loanId) => {
-    const response = await fetch(
-      `${API_BASE_URL}/loans/${loanId}/confirm-receipt`,
-      {
-        method: "POST",
-        headers: createHeaders(),
-      },
-    );
     return handleResponse(response);
   },
 
@@ -425,7 +403,7 @@ export const paymentsAPI = {
   },
 
   getPaymentStats: async () => {
-    const response = await fetch(`${API_BASE_URL}/payments/stats`, {
+    const response = await fetch(`${API_BASE_URL}/payments/stats/summary`, {
       method: "GET",
       headers: createHeaders(),
     });

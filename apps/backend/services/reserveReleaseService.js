@@ -6,13 +6,15 @@
  */
 
 const { Op } = require("sequelize");
+const { getPlatformRuntimeSettings } = require("./loanLifecycleSettings");
 
-const RESERVE_DAYS = 10;
 const INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 async function releaseExpiredReserves() {
   const { Loan } = require("../models");
-  const cutoff = new Date(Date.now() - RESERVE_DAYS * 24 * 60 * 60 * 1000);
+  const runtimeSettings = await getPlatformRuntimeSettings();
+  const reserveDays = runtimeSettings.reserveReleaseDays;
+  const cutoff = new Date(Date.now() - reserveDays * 24 * 60 * 60 * 1000);
 
   try {
     const [preColl] = await Loan.update(
@@ -45,7 +47,7 @@ async function releaseExpiredReserves() {
 
     if (preColl + coll > 0) {
       console.log(
-        `[ReserveRelease] Released ${preColl} pre-collection + ${coll} collection reserves older than ${RESERVE_DAYS} days.`,
+        `[ReserveRelease] Released ${preColl} pre-collection + ${coll} collection reserves older than ${reserveDays} days.`,
       );
     }
   } catch (error) {

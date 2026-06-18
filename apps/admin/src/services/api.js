@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "react-toastify";
 
 const RAW_API_URL =
   process.env.REACT_APP_API_URL || "http://localhost:8001/api";
@@ -39,6 +40,17 @@ api.interceptors.response.use(
       // Handle unauthorized access — dispatch event instead of hard reload
       localStorage.removeItem("adminToken");
       window.dispatchEvent(new CustomEvent("admin:unauthorized"));
+    }
+    if (error.response?.status === 403) {
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error?.message ||
+        "You do not have permission to perform this action.";
+      const url = error?.config?.url || "unknown";
+      const toastId = `forbidden:${url}:${serverMessage}`;
+      if (!toast.isActive(toastId)) {
+        toast.error(serverMessage, { toastId });
+      }
     }
     return Promise.reject(error);
   },
@@ -184,40 +196,25 @@ class ApiService {
   // Get Users List for Admin Management
   async getUsersList(params = {}) {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        search = "",
-        status = "all",
-        loanLevel = "all",
-        sortBy = "createdAt",
-        sortOrder = "desc",
-      } = params;
+      const { page = 1, limit = 10, search, status, level, sortBy = "created_at", sortOrder = "desc" } = params;
+      const queryParams = { page, limit, sortBy, sortOrder };
+      if (search) queryParams.search = search;
+      if (status) queryParams.status = status;
+      if (level) queryParams.level = level;
 
-      const queryParams = {
-        page,
-        limit,
-        search,
-        status,
-        loanLevel,
-        sortBy,
-        sortOrder,
-      };
-
-      const response = await api.get("/admin/users", {
-        params: queryParams,
-      });
-      return response.data;
+      const response = await api.get("/admin/users", { params: queryParams });
+      // Backend returns { success, data: { users, pagination } }
+      return response.data.data || response.data;
     } catch (error) {
       console.error("Error fetching users list:", error);
       throw error;
     }
   }
 
-  // Update user information
+  // Update user information (flat fields matching the User model)
   async updateUserInfo(userId, userData) {
     try {
-      const response = await api.put(`/users/${userId}/info`, userData);
+      const response = await api.put(`/admin/users/${userId}`, userData);
       return response.data;
     } catch (error) {
       console.error("Error updating user info:", error);
@@ -225,13 +222,24 @@ class ApiService {
     }
   }
 
-  // Reset user PIN
+  // Reset user PIN via admin endpoint
   async resetUserPin(userId, pinData) {
     try {
-      const response = await api.put(`/users/${userId}/reset-pin`, pinData);
+      const response = await api.put(`/admin/users/${userId}/reset-pin`, pinData);
       return response.data;
     } catch (error) {
       console.error("Error resetting user PIN:", error);
+      throw error;
+    }
+  }
+
+  // Update user level via admin endpoint
+  async adminSetUserLevel(userId, level) {
+    try {
+      const response = await api.patch(`/admin/users/${userId}/level`, { level });
+      return response.data;
+    } catch (error) {
+      console.error("Error updating user level:", error);
       throw error;
     }
   }
@@ -275,10 +283,11 @@ class ApiService {
 
   async updateUserLevel(userId, levelId, reason = "") {
     try {
-      const response = await api.put(`/users/${userId}/level`, {
-        levelId,
-        reason,
-      });
+      const payload = { levelId };
+      if (reason && String(reason).trim()) {
+        payload.reason = String(reason).trim();
+      }
+      const response = await api.put(`/users/${userId}/level`, payload);
       return response.data;
     } catch (error) {
       console.error("Error updating user level:", error);
@@ -288,11 +297,11 @@ class ApiService {
 
   async bulkUpdateUserLevels(userIds, levelId, reason = "") {
     try {
-      const response = await api.put("/users/bulk-level-update", {
-        userIds,
-        levelId,
-        reason,
-      });
+      const payload = { userIds, levelId };
+      if (reason && String(reason).trim()) {
+        payload.reason = String(reason).trim();
+      }
+      const response = await api.put("/users/bulk-level-update", payload);
       return response.data;
     } catch (error) {
       console.error("Error bulk updating user levels:", error);
@@ -438,7 +447,16 @@ class ApiService {
   async getConfiguration() {
     try {
       const response = await api.get("/config-new/admin/all");
-      return response.data;
+      const payload = response.data || {};
+      return {
+        ...payload,
+        config: Array.isArray(payload.data)
+          ? payload.data.reduce((acc, item) => {
+              acc[item.key] = item.value;
+              return acc;
+            }, {})
+          : payload.data || {},
+      };
     } catch (error) {
       console.error("Error fetching config:", error);
       throw error;
@@ -447,7 +465,30 @@ class ApiService {
 
   async updateConfiguration(config) {
     try {
-      const response = await api.put("/admin/config", config);
+      const flatten = (obj, prefix = "") => {
+        const out = [];
+        Object.entries(obj || {}).forEach(([key, value]) => {
+          const fullKey = prefix ? `${prefix}${key}` : key;
+          if (
+            value &&
+            typeof value === "object" &&
+            !Array.isArray(value)
+          ) {
+            out.push(...flatten(value, `${fullKey}.`));
+          } else {
+            out.push({ key: fullKey, value });
+          }
+        });
+        return out;
+      };
+
+      const configs = Array.isArray(config)
+        ? config
+        : flatten(config).filter((item) => item.value !== undefined);
+
+      const response = await api.put("/config-new/admin/bulk-update", {
+        configs,
+      });
       return response.data;
     } catch (error) {
       console.error("Error updating config:", error);
@@ -457,7 +498,7 @@ class ApiService {
 
   async getConfig() {
     try {
-      const response = await api.get("/admin/config");
+      const response = await api.get("/config-new/admin/all");
       return response.data;
     } catch (error) {
       console.error("Error fetching config:", error);
@@ -467,7 +508,7 @@ class ApiService {
 
   async updateConfig(key, value) {
     try {
-      const response = await api.put(`/admin/config/${key}`, { value });
+      const response = await api.put(`/config-new/${key}`, { value });
       return response.data;
     } catch (error) {
       console.error("Error updating config:", error);

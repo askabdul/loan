@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const getModels = () => require("../models");
+const { getPlatformRuntimeSettings } = require("./loanLifecycleSettings");
 
 class WebSocketService {
   constructor() {
@@ -134,6 +135,9 @@ class WebSocketService {
   async sendDashboardData(socket = null, forceRefresh = false) {
     try {
       const now = Date.now();
+      const runtimeSettings = await getPlatformRuntimeSettings();
+      this.CACHE_DURATION =
+        Number(runtimeSettings.dashboardCacheTtlSeconds || 30) * 1000;
 
       // Use cached data if available and not expired
       if (

@@ -16,7 +16,11 @@ import {
 } from "react-icons/fi";
 import { toast } from "react-toastify";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const RAW_API_BASE =
+  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+const API_BASE = RAW_API_BASE.endsWith("/api")
+  ? RAW_API_BASE
+  : `${RAW_API_BASE.replace(/\/$/, "")}/api`;
 const authHeader = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${localStorage.getItem("adminToken")}`,
@@ -62,6 +66,7 @@ const PRECOLL_STATUSES = [
   { value: "assigned", label: "Assigned" },
   { value: "processed", label: "Processed" },
   { value: "hung-up", label: "Hung Up" },
+  { value: "completed", label: "Completed" },
 ];
 
 const PreCollectionAllList = () => {

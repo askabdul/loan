@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FiPhone, FiRefreshCw, FiEdit3, FiSave, FiX } from "react-icons/fi";
+import apiService from "../services/api";
 
 const ContactInfo = () => {
   const [contactData, setContactData] = useState({});
@@ -81,13 +82,30 @@ const ContactInfo = () => {
   const fetchContactData = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/admin/contact-info");
-      if (response.ok) {
-        const data = await response.json();
-        setContactData(data.data || {});
-      } else {
-        throw new Error("Failed to fetch contact data");
-      }
+      const response = await apiService.getConfiguration();
+      const configRows = Array.isArray(response?.data)
+        ? response.data
+        : Object.entries(response?.config || {}).map(([key, value]) => ({ key, value }));
+
+      const mapped = {
+        support_phone: configRows.find((item) => item.key === "support_phone")?.value || "",
+        support_email: configRows.find((item) => item.key === "support_email")?.value || "",
+        support_whatsapp:
+          configRows.find((item) => item.key === "support_whatsapp")?.value || "",
+        office_address: configRows.find((item) => item.key === "office_address")?.value || "",
+        business_hours: configRows.find((item) => item.key === "business_hours")?.value || "",
+        emergency_contact:
+          configRows.find((item) => item.key === "emergency_contact")?.value || "",
+        website_url: configRows.find((item) => item.key === "website_url")?.value || "",
+        social_media_facebook:
+          configRows.find((item) => item.key === "social_media_facebook")?.value || "",
+        social_media_twitter:
+          configRows.find((item) => item.key === "social_media_twitter")?.value || "",
+        social_media_linkedin:
+          configRows.find((item) => item.key === "social_media_linkedin")?.value || "",
+      };
+
+      setContactData(mapped);
     } catch (error) {
       console.error("Error fetching contact data:", error);
       setMessage("Failed to load contact information");
@@ -99,22 +117,15 @@ const ContactInfo = () => {
   const updateContactData = async (updates) => {
     try {
       setSaving(true);
-      const response = await fetch("/api/admin/contact-info", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updates),
-      });
+      const mergedContent = { ...contactData, ...updates };
 
-      if (response.ok) {
-        const result = await response.json();
-        setContactData((prev) => ({ ...prev, ...updates }));
-        setMessage("Contact information updated successfully!");
-        setTimeout(() => setMessage(""), 3000);
-      } else {
-        throw new Error("Failed to update contact data");
+      for (const [key, value] of Object.entries(updates)) {
+        await apiService.updateConfig(key, value);
       }
+
+      setContactData(mergedContent);
+      setMessage("Contact information updated successfully!");
+      setTimeout(() => setMessage(""), 3000);
     } catch (error) {
       console.error("Error updating contact data:", error);
       setMessage("Failed to update contact information");

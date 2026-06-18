@@ -1,7 +1,7 @@
 .detail-modal-overlay {
   position: fixed;
   top: 0;
-  left: 250px;
+  left: 0;
   right: 0;
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.5);
@@ -12,16 +12,34 @@
   padding: 16px;
 }
 
+@media (min-width: 768px) {
+  .detail-modal-overlay {
+    left: 16rem;
+  }
+}
+
 .detail-modal {
   background: white;
   border-radius: 16px;
-  width: 100%;
+  width: 92vw;
   max-width: 560px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+@media (min-width: 768px) {
+  .detail-modal {
+    width: 60vw;
+  }
+}
+
+@media (min-width: 1200px) {
+  .detail-modal {
+    width: 50vw;
+  }
 }
 
 .detail-modal-header {
@@ -904,17 +922,35 @@
   padding: 16px;
 }
 
+@media (min-width: 768px) {
+  .dm-overlay {
+    left: 16rem;
+  }
+}
+
 /* Modal container */
 .dm-modal {
   background: #fff;
   border-radius: 12px;
-  width: 100%;
+  width: 92vw;
   max-width: 720px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
   overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .dm-modal {
+    width: 60vw;
+  }
+}
+
+@media (min-width: 1200px) {
+  .dm-modal {
+    width: 50vw;
+  }
 }
 
 /* Header */
@@ -1447,3 +1483,7 @@
     flex-wrap: wrap;
   }
 }
+/* Disbursement status badges */
+.dm-badge-processing { color: #b45309; font-weight: 600; }
+.dm-badge-failed     { color: #dc2626; font-weight: 600; }
+.dm-badge-sent       { color: #059669; font-weight: 600; }

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUpload, FiCalendar, FiRefreshCw, FiUser, FiCreditCard } from 'react-icons/fi';
 
+const API_BASE_URL = (process.env.REACT_APP_API_URL || 'http://localhost:8001/api').replace(/\/$/, '');
+
 const LoanExtension = () => {
   const [searchData, setSearchData] = useState({
     userId: '',
@@ -17,6 +19,11 @@ const LoanExtension = () => {
   const [extensionFee, setExtensionFee] = useState(0);
   const [recentExtensions, setRecentExtensions] = useState([]);
   const [extensionHistory, setExtensionHistory] = useState([]);
+  const [extensionPolicy, setExtensionPolicy] = useState({
+    maxExtensionCount: 3,
+    maxDaysPerRequest: 30,
+    maxOverdueDaysForExtension: 30,
+  });
 
   // Check admin permissions
   const hasPermission = () => {
@@ -41,7 +48,7 @@ const LoanExtension = () => {
   const fetchRecentExtensions = async () => {
     try {
       const token = localStorage.getItem('adminToken');
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/loan-extension/admin/recent`, {
+      const response = await fetch(`${API_BASE_URL}/loan-extension/admin/recent`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -111,7 +118,7 @@ const LoanExtension = () => {
     try {
       const token = localStorage.getItem('adminToken');
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/loan-extension/search?userId=${searchData.userId}&loanId=${searchData.loanId}`,
+        `${API_BASE_URL}/loan-extension/search?userId=${searchData.userId}&loanId=${searchData.loanId}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -123,7 +130,12 @@ const LoanExtension = () => {
       const data = await response.json();
 
       if (response.ok) {
-        setLoanDetails(data.loan);
+        const loanData = data?.data?.loan || data?.loan;
+        const policyData = data?.data?.policy || data?.policy;
+        setLoanDetails(loanData || null);
+        if (policyData) {
+          setExtensionPolicy((prev) => ({ ...prev, ...policyData }));
+        }
         setExtensionHistory(data.extensionHistory || []);
         showAlert('success', 'Loan found successfully');
       } else {
@@ -145,7 +157,7 @@ const LoanExtension = () => {
     try {
       const token = localStorage.getItem('adminToken');
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/loan-extension/calculate-fee`,
+        `${API_BASE_URL}/loan-extension/calculate-fee`,
         {
           method: 'POST',
           headers: {
@@ -161,7 +173,12 @@ const LoanExtension = () => {
 
       const data = await response.json();
       if (response.ok) {
-        setExtensionFee(data.extensionFee);
+        const fee = data?.data?.extensionFee ?? data?.extensionFee ?? 0;
+        setExtensionFee(fee);
+        const policyData = data?.data?.policy || data?.policy;
+        if (policyData) {
+          setExtensionPolicy((prev) => ({ ...prev, ...policyData }));
+        }
       }
     } catch (error) {
       console.error('Error calculating extension fee:', error);
@@ -174,8 +191,9 @@ const LoanExtension = () => {
       return;
     }
 
-    if (!extensionData.extensionDays || extensionData.extensionDays < 1 || extensionData.extensionDays > 30) {
-      showAlert('error', 'Extension days must be between 1 and 30');
+    const maxDays = extensionPolicy.maxDaysPerRequest || 30;
+    if (!extensionData.extensionDays || extensionData.extensionDays < 1 || extensionData.extensionDays > maxDays) {
+      showAlert('error', `Extension days must be between 1 and ${maxDays}`);
       return;
     }
 
@@ -194,7 +212,7 @@ const LoanExtension = () => {
       formData.append('popFile', extensionData.popFile);
 
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/api/loan-extension/admin-extend`,
+        `${API_BASE_URL}/loan-extension/admin-extend`,
         {
           method: 'POST',
           headers: {
@@ -322,8 +340,8 @@ const LoanExtension = () => {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Extension Days (1-30)</label>
-                  <input type="number" name="extensionDays" value={extensionData.extensionDays} onChange={handleExtensionChange} min="1" max="30" placeholder="Days" className={inp} />
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Extension Days (1-{extensionPolicy.maxDaysPerRequest || 30})</label>
+                  <input type="number" name="extensionDays" value={extensionData.extensionDays} onChange={handleExtensionChange} min="1" max={extensionPolicy.maxDaysPerRequest || 30} placeholder="Days" className={inp} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">Extension Fee</label>

@@ -5,6 +5,7 @@ const { User, LoanLevel, Loan } = require("../models");
 const { auth, adminAuth } = require("../middleware/auth");
 const {
   requireMenuAccess,
+  requireSubMenuAccess,
   requireActionPermission,
 } = require("../middleware/roleAuth");
 const AppError = require("../utils/appError");
@@ -298,6 +299,7 @@ router.get(
   "/with-levels",
   adminAuth,
   requireMenuAccess("user-management"),
+  requireSubMenuAccess("user", "levelAssignment"),
   async (req, res) => {
     try {
       const {
@@ -379,10 +381,11 @@ router.get(
 router.put(
   "/:userId/level",
   adminAuth,
+  requireSubMenuAccess("user", "levelAssignment"),
   requireActionPermission("edit_user"),
   [
     body("levelId").notEmpty(),
-    body("reason").optional().trim().isLength({ min: 1, max: 500 }),
+    body("reason").optional({ checkFalsy: true }).trim().isLength({ min: 1, max: 500 }),
   ],
   async (req, res) => {
     try {
@@ -447,11 +450,12 @@ router.put(
 router.put(
   "/bulk-level-update",
   adminAuth,
+  requireSubMenuAccess("user", "levelAssignment"),
   requireActionPermission("edit_user"),
   [
     body("userIds").isArray({ min: 1 }),
     body("levelId").notEmpty(),
-    body("reason").optional().trim().isLength({ min: 1, max: 500 }),
+    body("reason").optional({ checkFalsy: true }).trim().isLength({ min: 1, max: 500 }),
   ],
   async (req, res) => {
     try {
@@ -518,6 +522,7 @@ router.get(
   "/:userId/level-history",
   adminAuth,
   requireMenuAccess("user-management"),
+  requireSubMenuAccess("user", "levelAssignment"),
   async (req, res) => {
     try {
       const user = await User.findByPk(req.params.userId, {
@@ -549,6 +554,7 @@ router.post(
   "/admin-register",
   adminAuth,
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "manualRegistration"),
   requireActionPermission("createUser"),
   [
     body("phoneNumber").custom((value) => {
@@ -716,6 +722,7 @@ router.get(
   "/list",
   adminAuth,
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "listOfUsers"),
   requireActionPermission("viewUsers"),
   async (req, res) => {
     try {
@@ -801,6 +808,7 @@ router.put(
   "/:userId/info",
   adminAuth,
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   requireActionPermission("editUsers"),
   [
     body("personalInfo.firstName").optional().trim().isLength({ min: 1 }),
@@ -872,6 +880,7 @@ router.put(
   "/:userId/reset-pin",
   adminAuth,
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   requireActionPermission("resetPin"),
   [body("newPin").isLength({ min: 4, max: 4 }).isNumeric()],
   async (req, res) => {
@@ -906,6 +915,7 @@ router.put(
   "/:userId/status",
   adminAuth,
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   requireActionPermission("toggleUserStatus"),
   [body("isActive").isBoolean()],
   async (req, res) => {

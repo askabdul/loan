@@ -35,8 +35,10 @@ const LoanTermsCarousel = ({ selectedTerm, onTermChange, userLevel }) => {
           
           setAvailableTerms(activeTerms);
           
-          // Auto-select first term if no term is selected
-          if (activeTerms.length > 0 && !selectedTerm) {
+          // Auto-select first active term if nothing is selected or the
+          // current selection is no longer in the enabled list
+          const selectionValid = activeTerms.some(t => t.durationDays === selectedTerm);
+          if (activeTerms.length > 0 && (!selectedTerm || !selectionValid)) {
             onTermChange(activeTerms[0].durationDays, activeTerms[0]);
           }
         } else {

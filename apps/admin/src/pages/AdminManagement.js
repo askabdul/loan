@@ -88,6 +88,7 @@ const AdminFormFields = ({
             value={formData[name] || ""}
             onChange={handleInputChange}
             required={required}
+            minLength={name === "password" ? 8 : undefined}
             placeholder={placeholder}
             className={inputCls}
           />
@@ -177,7 +178,7 @@ const AdminManagement = () => {
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatus, setFilterStatus] = useState("active");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const searchTimeoutRef = useRef(null);
@@ -196,6 +197,15 @@ const AdminManagement = () => {
     isActive: true,
   });
   const [errors, setErrors] = useState({});
+
+  const normalizeAdmin = (admin) => {
+    const role = admin?.role || admin?.Role || null;
+    return {
+      ...admin,
+      role,
+      roleId: admin?.roleId || role?.id || "",
+    };
+  };
 
   const fetchAdmins = useCallback(
     async (page = currentPage) => {
@@ -222,7 +232,8 @@ const AdminManagement = () => {
 
         if (response.ok) {
           const data = await response.json();
-          setAdmins(data.data.admins);
+          const adminRows = (data?.data?.admins || []).map(normalizeAdmin);
+          setAdmins(adminRows);
           setTotalPages(data.data.pagination.pages);
         } else {
           console.error("Failed to fetch admins");
@@ -412,8 +423,9 @@ const AdminManagement = () => {
       );
 
       if (response.ok) {
+        const data = await response.json();
         fetchAdmins();
-        toast.success("Admin deleted successfully!");
+        toast.success(data.message || "Admin deactivated successfully!");
       } else {
         const data = await response.json();
         toast.error(data.message || "Failed to delete admin");
@@ -429,23 +441,25 @@ const AdminManagement = () => {
   };
 
   const openEditModal = (admin) => {
+    const normalizedAdmin = normalizeAdmin(admin);
     setSelectedAdmin(admin);
     setFormData({
-      firstName: admin.firstName || "",
-      lastName: admin.lastName || "",
-      email: admin.email || "",
-      username: admin.username || "",
-      phoneNumber: admin.phoneNumber || "",
-      role: admin.role?.id || admin.roleId || "",
-      designation: admin.designation || "",
-      dateJoined: admin.dateJoined
-        ? new Date(admin.dateJoined).toISOString().split("T")[0]
+      firstName: normalizedAdmin.firstName || "",
+      lastName: normalizedAdmin.lastName || "",
+      email: normalizedAdmin.email || "",
+      username: normalizedAdmin.username || "",
+      phoneNumber: normalizedAdmin.phoneNumber || "",
+      role: normalizedAdmin.role?.id || normalizedAdmin.roleId || "",
+      designation: normalizedAdmin.designation || "",
+      dateJoined: normalizedAdmin.dateJoined
+        ? new Date(normalizedAdmin.dateJoined).toISOString().split("T")[0]
         : "",
-      dateOfExpiry: admin.dateOfExpiry
-        ? new Date(admin.dateOfExpiry).toISOString().split("T")[0]
+      dateOfExpiry: normalizedAdmin.dateOfExpiry
+        ? new Date(normalizedAdmin.dateOfExpiry).toISOString().split("T")[0]
         : "",
       profileImage: null,
-      isActive: admin.isActive !== undefined ? admin.isActive : true,
+      isActive:
+        normalizedAdmin.isActive !== undefined ? normalizedAdmin.isActive : true,
     });
     setShowEditModal(true);
   };

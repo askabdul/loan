@@ -17,6 +17,7 @@ const { adminAuth } = require("../middleware/auth");
 const {
   requireMenuAccess,
   requireSubMenuAccess,
+  requireAnySubMenuAccess,
   requireDataAccess,
   requireActionPermission,
   filterLoansByRole,
@@ -35,6 +36,22 @@ const {
 } = require("../middleware/realtimeMiddleware");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const {
+  getPlatformRuntimeSettings,
+  invalidateSettingsCache,
+} = require("../services/loanLifecycleSettings");
+const {
+  isBridgeConfigured,
+  initiateBridgeDisbursement,
+} = require("../services/bridgeService");
+
+const LIFECYCLE_KEYS = new Set([
+  'auto_disburse_on_approval', 'activate_loan_on_disbursement',
+  'overdue_day_count_mode', 'loan_extension_daily_fee_rate',
+  'max_extension_days_per_request', 'max_extension_count',
+  'max_overdue_days_for_extension', 'reserve_release_days',
+  'dashboard_refresh_interval_seconds', 'dashboard_cache_ttl_seconds',
+]);
 
 const router = express.Router();
 router.use(adminAuth);
@@ -53,13 +70,27 @@ const loanUserInclude = {
   required: false,
 };
 
+const calculateCalendarDueDate = (activationDate, termInDays) => {
+  const due = new Date(activationDate);
+  due.setHours(0, 0, 0, 0);
+  due.setDate(due.getDate() + Number(termInDays || 0));
+  return due;
+};
+
 // ===== DASHBOARD =====
 
 // GET /api/admin/dashboard/overview
 router.get(
   "/dashboard/overview",
-  requireMenuAccess("dashboard"),
   catchAsync(async (req, res, next) => {
+    const canViewAllUsers = await req.admin.canAccessData("viewAllUsers");
+    const canViewAllLoans = await req.admin.canAccessData("viewAllLoans");
+    const canViewPayments = await req.admin.canAccessData("viewPayments");
+    const canViewFinancialData = await req.admin.canAccessData(
+      "viewFinancialData",
+    );
+    const runtimeSettings = await getPlatformRuntimeSettings();
+
     const [
       loanStats,
       userStats,
@@ -146,9 +177,13 @@ router.get(
       failedPayments: 0,
     };
 
+    const disbursedStatuses = ["disbursed", "active", "overdue", "completed"];
+
     loanStats.forEach((s) => {
       dashboardStats.totalLoans += parseInt(s.count) || 0;
-      dashboardStats.totalDisbursed += parseFloat(s.totalDisbursed) || 0;
+      if (disbursedStatuses.includes(s.status)) {
+        dashboardStats.totalDisbursed += parseFloat(s.totalDisbursed) || 0;
+      }
       if (["approved", "disbursed", "active"].includes(s.status))
         dashboardStats.activeLoans += parseInt(s.count) || 0;
       else if (["pending", "under-review"].includes(s.status))
@@ -170,14 +205,46 @@ router.get(
         (dashboardStats.completedLoans / dashboardStats.totalLoans) * 100,
       );
 
+    const maskedStats = {
+      totalLoans: canViewAllLoans ? dashboardStats.totalLoans : null,
+      totalUsers: canViewAllUsers ? dashboardStats.totalUsers : null,
+      activeUsers: canViewAllUsers ? dashboardStats.activeUsers : null,
+      completedRegistrations: canViewAllUsers
+        ? dashboardStats.completedRegistrations
+        : null,
+      totalDisbursed:
+        canViewFinancialData || canViewPayments
+          ? dashboardStats.totalDisbursed
+          : null,
+      activeLoans: canViewAllLoans ? dashboardStats.activeLoans : null,
+      pendingLoans: canViewAllLoans ? dashboardStats.pendingLoans : null,
+      completedLoans: canViewAllLoans ? dashboardStats.completedLoans : null,
+      rejectedLoans: canViewAllLoans ? dashboardStats.rejectedLoans : null,
+      repaymentRate:
+        canViewFinancialData || canViewPayments
+          ? dashboardStats.repaymentRate
+          : null,
+      totalPayments: canViewPayments ? dashboardStats.totalPayments : null,
+      successfulPayments: canViewPayments
+        ? dashboardStats.successfulPayments
+        : null,
+      failedPayments: canViewPayments ? dashboardStats.failedPayments : null,
+    };
+
+    const recentActivity = {
+      loans: canViewAllLoans ? recentLoans : [],
+      payments: canViewPayments ? recentPayments : [],
+      users: canViewAllUsers ? recentUsers : [],
+    };
+
     res.json({
       success: true,
       data: {
-        stats: dashboardStats,
-        recentActivity: {
-          loans: recentLoans,
-          payments: recentPayments,
-          users: recentUsers,
+        stats: maskedStats,
+        recentActivity,
+        meta: {
+          dashboardRefreshIntervalSeconds:
+            runtimeSettings.dashboardRefreshIntervalSeconds,
         },
       },
     });
@@ -190,7 +257,7 @@ router.get(
 router.get(
   "/users",
   requireMenuAccess("userManagement"),
-  requireDataAccess("users"),
+  requireSubMenuAccess("user", "listOfUsers"),
   filterUserData,
   catchAsync(async (req, res, next) => {
     const {
@@ -211,6 +278,7 @@ router.get(
     if (level) where.currentLoanLevel = parseInt(level);
     if (search)
       where[Op.or] = [
+        { userId: { [Op.iLike]: `%${search}%` } },
         { firstName: { [Op.iLike]: `%${search}%` } },
         { lastName: { [Op.iLike]: `%${search}%` } },
         { email: { [Op.iLike]: `%${search}%` } },
@@ -242,7 +310,7 @@ router.get(
 router.get(
   "/users/:id",
   requireMenuAccess("userManagement"),
-  requireDataAccess("users"),
+  requireSubMenuAccess("user", "listOfUsers"),
   catchAsync(async (req, res, next) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return next(new AppError("User not found", 404));
@@ -282,10 +350,13 @@ router.get(
             ["approved", "disbursed", "active"].includes(l.status),
           ).length,
           completedLoans: loans.filter((l) => l.status === "completed").length,
-          totalBorrowed: loans.reduce(
-            (s, l) => s + parseFloat(l.amount || 0),
-            0,
-          ),
+          totalBorrowed: loans
+            .filter((l) =>
+              ["disbursed", "active", "overdue", "completed"].includes(
+                l.status,
+              ),
+            )
+            .reduce((s, l) => s + parseFloat(l.amount || 0), 0),
           totalRepaid: payments
             .filter((p) => p.status === "completed")
             .reduce((s, p) => s + parseFloat(p.amount || 0), 0),
@@ -299,6 +370,7 @@ router.get(
 router.put(
   "/users/:id",
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   requireActionPermission("editUsers"),
   [
     body("firstName").optional().isString().trim().notEmpty(),
@@ -350,6 +422,7 @@ router.put(
 router.patch(
   "/users/:id/status",
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
   [body("isActive").isBoolean(), body("reason").optional().isString()],
   catchAsync(async (req, res, next) => {
     const errors = validationResult(req);
@@ -373,6 +446,7 @@ router.patch(
 router.patch(
   "/users/:id/level",
   requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "levelAssignment"),
   requireActionPermission("updateUserLevel"),
   [
     body("level").isInt({ min: 1, max: 10 }),
@@ -412,13 +486,37 @@ router.patch(
   }),
 );
 
+// PUT /api/admin/users/:id/reset-pin
+router.put(
+  "/users/:id/reset-pin",
+  requireMenuAccess("userManagement"),
+  requireSubMenuAccess("user", "userManagement"),
+  requireActionPermission("resetPin"),
+  [body("newPin").isString().isLength({ min: 4, max: 4 }).matches(/^\d{4}$/)],
+  catchAsync(async (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return next(new AppError("PIN must be exactly 4 digits", 400));
+
+    const user = await User.findByPk(req.params.id);
+    if (!user) return next(new AppError("User not found", 404));
+
+    // The beforeUpdate hook in User model automatically bcrypt-hashes the pin
+    await user.update({ pin: req.body.newPin });
+    res.json({ success: true, message: "PIN reset successfully" });
+  }),
+);
+
 // ===== LOAN MANAGEMENT =====
 
 // GET /api/admin/loans
 router.get(
   "/loans",
-  requireMenuAccess("creditReview"),
-  requireDataAccess("loans"),
+  requireAnySubMenuAccess([
+    { menu: "creditReview", subMenu: "list" },
+    { menu: "order", subMenu: "orderList" },
+    { menu: "order", subMenu: "list" },
+  ]),
   filterLoansByRole,
   filterLoanData,
   catchAsync(async (req, res, next) => {
@@ -538,8 +636,12 @@ router.get(
 // GET /api/admin/loans/:id
 router.get(
   "/loans/:id",
-  requireMenuAccess("loanManagement"),
-  requireDataAccess("loans"),
+  requireAnySubMenuAccess([
+    { menu: "creditReview", subMenu: "list" },
+    { menu: "order", subMenu: "orderList" },
+    { menu: "order", subMenu: "list" },
+    { menu: "order", subMenu: "loanDetails" },
+  ]),
   catchAsync(async (req, res, next) => {
     const loan = await Loan.findByPk(req.params.id, {
       include: [loanUserInclude],
@@ -556,7 +658,8 @@ router.get(
 // PATCH /api/admin/loans/:id/status
 router.patch(
   "/loans/:id/status",
-  requireMenuAccess("loanManagement"),
+  requireMenuAccess("creditReview"),
+  requireSubMenuAccess("creditReview", "list"),
   requireActionPermission("updateLoanStatus"),
   [
     body("status").isIn([
@@ -564,6 +667,7 @@ router.patch(
       "under-review",
       "approved",
       "rejected",
+      "hanged-up",
       "disbursed",
       "active",
       "completed",
@@ -581,6 +685,18 @@ router.patch(
     const loan = await Loan.findByPk(req.params.id);
     if (!loan) return next(new AppError("Loan not found", 404));
 
+    const roleName = req.admin?.Role?.name;
+    if (roleName === "review-officer") {
+      if (!loan.assignedOfficerId || loan.assignedOfficerId !== req.admin.id) {
+        return next(
+          new AppError(
+            "You can only update review status for loans assigned to you.",
+            403,
+          ),
+        );
+      }
+    }
+
     const updates = { status };
     if (status === "rejected" && rejectionReason)
       updates.rejectionReason = rejectionReason;
@@ -597,18 +713,87 @@ router.patch(
       updates.reviewedById = req.admin.id;
       updates.reviewDate = new Date();
     }
-    if (status === "approved") updates.approvalDate = new Date();
-    else if (status === "disbursed") {
+    if (status === "approved") {
+      const now = new Date();
+      updates.approvalDate = now;
+      updates.disbursementLastAttemptAt = now;
+      updates.disbursementAttempts = (loan.disbursementAttempts || 0) + 1;
+
+      const notes = [...(loan.adminNotes || [])];
+
+      if (isBridgeConfigured()) {
+        // Attempt Bridge API outbound disbursement (DTM)
+        try {
+          const loanUser = loan.User || (await User.findByPk(loan.userId, { attributes: ["id", "firstName", "lastName", "phoneNumber"] }));
+          const disbResult = await initiateBridgeDisbursement({ loan, user: loanUser, req });
+
+          if (disbResult.accepted) {
+            updates.disbursementStatus = "processing";
+            updates.disbursementReference = disbResult.transactionId;
+            updates.disbursementChannel = "momo";
+            notes.push({
+              note: `Bridge disbursement initiated — txn: ${disbResult.transactionId}, network: ${disbResult.detectedNetwork}, amount: GHS ${disbResult.disbursedAmount}`,
+              addedBy: req.admin.id,
+              addedAt: now,
+              type: "bridge_disbursement_started",
+            });
+          } else {
+            updates.disbursementStatus = "failed";
+            updates.disbursementFailedAt = now;
+            updates.disbursementFailureReason = disbResult.responseMessage || "Bridge API rejected disbursement";
+            notes.push({
+              note: `Bridge disbursement failed: ${disbResult.responseMessage} (code ${disbResult.responseCode})`,
+              addedBy: req.admin.id,
+              addedAt: now,
+              type: "bridge_disbursement_failed",
+            });
+          }
+        } catch (disbError) {
+          updates.disbursementStatus = "failed";
+          updates.disbursementFailedAt = now;
+          updates.disbursementFailureReason = disbError.message;
+          notes.push({
+            note: `Bridge disbursement error: ${disbError.message}`,
+            addedBy: req.admin.id,
+            addedAt: now,
+            type: "bridge_disbursement_error",
+          });
+        }
+      } else {
+        updates.disbursementStatus = "processing";
+        notes.push({
+          note: "Auto-disbursement initiated (Bridge API not configured — manual disbursement required)",
+          addedBy: req.admin.id,
+          addedAt: now,
+          type: "auto_disbursement_started",
+        });
+      }
+
+      updates.adminNotes = notes;
+    } else if (status === "disbursed") {
       const disbDate = new Date();
       updates.disbursementDate = disbDate;
       // Set remaining balance to full repayment amount so customer sees correct balance
       updates.remainingBalance = loan.totalAmount || loan.amount;
-      // Calculate due date from disbursement date + loan term
-      if (loan.termInDays) {
-        const dueDate = new Date(disbDate);
-        dueDate.setDate(dueDate.getDate() + Number(loan.termInDays));
-        updates.dueDate = dueDate;
+      updates.disbursementStatus = "sent";
+      updates.disbursementFailureReason = null;
+      updates.disbursementFailedAt = null;
+    } else if (status === "active") {
+      if (loan.status !== "disbursed") {
+        return next(
+          new AppError(
+            "Loan can only be activated after successful disbursement.",
+            400,
+          ),
+        );
       }
+      const activationTime = new Date();
+      updates.activationConfirmedAt = activationTime;
+      updates.activationConfirmedById = req.admin.id;
+      updates.dueDate = calculateCalendarDueDate(
+        activationTime,
+        loan.termInDays || 0,
+      );
     }
 
     await loan.update(updates);
@@ -668,6 +853,7 @@ router.patch(
 router.post(
   "/loans/assign",
   requireMenuAccess("creditReview"),
+  requireSubMenuAccess("creditReview", "assign"),
   requireActionPermission("assignLoan"),
   [
     body("loanIds").isArray(),
@@ -745,7 +931,8 @@ router.post(
 // GET /api/admin/config
 router.get(
   "/config",
-  requireMenuAccess("systemConfig"),
+  requireMenuAccess("appConfiguration"),
+  requireSubMenuAccess("appConfiguration", "generalSettings"),
   requireDataAccess("configurations"),
   catchAsync(async (req, res, next) => {
     const configs = await AppConfig.findAll();
@@ -760,7 +947,8 @@ router.get(
 // PUT /api/admin/config/:key
 router.put(
   "/config/:key",
-  requireMenuAccess("systemConfig"),
+  requireMenuAccess("appConfiguration"),
+  requireSubMenuAccess("appConfiguration", "generalSettings"),
   requireActionPermission("updateConfiguration"),
   [body("value").exists()],
   catchAsync(async (req, res, next) => {
@@ -773,6 +961,7 @@ router.put(
       req.body.value,
       req.admin.id,
     );
+    if (LIFECYCLE_KEYS.has(req.params.key)) invalidateSettingsCache();
     const websocketService = require("../services/websocketService");
     websocketService.broadcastSystemConfigUpdate(
       req.params.key,
@@ -789,7 +978,8 @@ router.put(
 // PUT /api/admin/config
 router.put(
   "/config",
-  requireMenuAccess("systemConfig"),
+  requireMenuAccess("appConfiguration"),
+  requireSubMenuAccess("appConfiguration", "generalSettings"),
   requireActionPermission("updateConfiguration"),
   catchAsync(async (req, res, next) => {
     const configs = req.body;
@@ -835,7 +1025,7 @@ router.get(
       where,
       order: [
         ["type", "ASC"],
-        ["sort_order", "ASC"],
+        ["sortOrder", "ASC"],
       ],
     });
     res.json({ success: true, data: content });
@@ -914,7 +1104,8 @@ function getPeriodFilter(period) {
 // GET /api/admin/analytics/loans
 router.get(
   "/analytics/loans",
-  requireMenuAccess("analytics"),
+  requireMenuAccess("dataStatistics"),
+  requireSubMenuAccess("dataStatistics", "dashboard"),
   requireDataAccess("loanAnalytics"),
   filterLoansByRole,
   catchAsync(async (req, res, next) => {
@@ -960,7 +1151,8 @@ router.get(
 // GET /api/admin/analytics/users
 router.get(
   "/analytics/users",
-  requireMenuAccess("analytics"),
+  requireMenuAccess("dataStatistics"),
+  requireSubMenuAccess("dataStatistics", "dashboard"),
   requireDataAccess("userAnalytics"),
   catchAsync(async (req, res, next) => {
     const where = getPeriodFilter(req.query.period || "30d");
@@ -1002,6 +1194,8 @@ router.get(
 
 router.get(
   "/roles",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "roleManagement"),
   catchAsync(async (req, res, next) => {
     const roles = await Role.findAll({
       where: { isActive: true },
@@ -1019,6 +1213,7 @@ router.get(
 router.get(
   "/payments/stats",
   requireMenuAccess("fundManagement"),
+  requireSubMenuAccess("fundManagement", "paymentManagement"),
   catchAsync(async (req, res) => {
     const rows = await Payment.findAll({
       attributes: [
@@ -1053,6 +1248,7 @@ router.get(
 router.get(
   "/payments",
   requireMenuAccess("fundManagement"),
+  requireSubMenuAccess("fundManagement", "paymentManagement"),
   requireDataAccess("payments"),
   filterPaymentData,
   catchAsync(async (req, res, next) => {
@@ -1116,6 +1312,8 @@ router.get(
 
 router.get(
   "/overdue-tracking/status",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     res.json({ success: true, status: overdueTrackingService.getStatus() });
@@ -1124,6 +1322,8 @@ router.get(
 
 router.post(
   "/overdue-tracking/manual-check",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     overdueTrackingService
@@ -1138,6 +1338,8 @@ router.post(
 
 router.post(
   "/overdue-tracking/start",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     overdueTrackingService.start();
@@ -1150,6 +1352,8 @@ router.post(
 
 router.post(
   "/overdue-tracking/stop",
+  requireMenuAccess("system"),
+  requireSubMenuAccess("system", "adminManagement"),
   catchAsync(async (req, res, next) => {
     const overdueTrackingService = require("../services/overdueTrackingService");
     overdueTrackingService.stop();

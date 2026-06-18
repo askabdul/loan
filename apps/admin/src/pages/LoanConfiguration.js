@@ -108,11 +108,22 @@ const LoanConfiguration = () => {
     e.preventDefault();
     try {
       setLoading(true);
+      const payload = {
+        termId: termForm.termId,
+        displayName: termForm.displayName,
+        durationDays: Number(termForm.durationDays),
+        interestRate: termForm.interestRate === '' ? null : Number(termForm.interestRate),
+        serviceFeePct: termForm.serviceFeeRate === '' ? null : Number(termForm.serviceFeeRate),
+        administrationFeePct: termForm.processingFeeRate === '' ? null : Number(termForm.processingFeeRate),
+        commitmentFeePct: termForm.commitmentFeeRate === '' ? null : Number(termForm.commitmentFeeRate),
+        enabled: !!termForm.isActive,
+      };
+
       if (editingTerm) {
-        await apiService.put(`/loan-terms/${editingTerm._id}`, termForm);
+        await apiService.put(`/loan-terms/${editingTerm.id}`, payload);
         showMessage('success', 'Loan term updated successfully');
       } else {
-        await apiService.post('/loan-terms', termForm);
+        await apiService.post('/loan-terms', payload);
         showMessage('success', 'Loan term created successfully');
       }
       resetTermForm();
@@ -131,12 +142,12 @@ const LoanConfiguration = () => {
       displayName: term.displayName || term.name || '',
       durationDays: term.durationDays,
       interestRate: term.interestRate,
-      serviceFeeRate: term.serviceFeeRate || '',
-      processingFeeRate: term.processingFeeRate || '',
-      commitmentFeeRate: term.commitmentFeeRate || '',
+      serviceFeeRate: term.serviceFeePct || term.serviceFeeRate || '',
+      processingFeeRate: term.administrationFeePct || term.processingFeeRate || '',
+      commitmentFeeRate: term.commitmentFeePct || term.commitmentFeeRate || '',
       minAmount: term.minAmount || '',
       maxAmount: term.maxAmount || '',
-      isActive: term.isActive
+      isActive: term.enabled
     });
     setShowTermForm(true);
   };
@@ -186,11 +197,28 @@ const LoanConfiguration = () => {
     e.preventDefault();
     try {
       setLoading(true);
+      const payload = {
+        name: levelForm.name,
+        level: Number(levelForm.levelNumber),
+        minAmount: Number(levelForm.minAmount),
+        maxAmount: Number(levelForm.maxAmount),
+        interestRate: levelForm.interestRate === '' ? 0 : Number(levelForm.interestRate),
+        serviceFeePct: levelForm.serviceFee === '' ? 0 : Number(levelForm.serviceFee),
+        administrationFeePct: levelForm.processingFee === '' ? 0 : Number(levelForm.processingFee),
+        commitmentFeePct: levelForm.commitmentFee === '' ? 0 : Number(levelForm.commitmentFee),
+        autoApproval: {
+          enabled: Number(levelForm.autoApprovalLimit || 0) > 0,
+          maxAmount: Number(levelForm.autoApprovalLimit || 0),
+          conditions: { minCompletedLoans: 0, minRepaymentRate: 100 }
+        },
+        isActive: !!levelForm.isActive,
+      };
+
       if (editingLevel) {
-        await apiService.put(`/loan-levels/${editingLevel._id}`, levelForm);
+        await apiService.patch(`/loan-levels/${editingLevel.id}`, payload);
         showMessage('success', 'Loan level updated successfully');
       } else {
-        await apiService.post('/loan-levels', levelForm);
+        await apiService.post('/loan-levels', payload);
         showMessage('success', 'Loan level created successfully');
       }
       resetLevelForm();
@@ -206,15 +234,15 @@ const LoanConfiguration = () => {
     setEditingLevel(level);
     setLevelForm({
       name: level.name,
-      levelNumber: level.levelNumber,
+      levelNumber: level.level,
       minAmount: level.minAmount,
       maxAmount: level.maxAmount,
       interestRate: level.interestRate || '',
-      serviceFee: level.serviceFee || '',
-      processingFee: level.processingFee || '',
-      commitmentFee: level.commitmentFee || '',
+      serviceFee: level.serviceFeePct || level.serviceFee || '',
+      processingFee: level.administrationFeePct || level.processingFee || '',
+      commitmentFee: level.commitmentFeePct || level.commitmentFee || '',
       allowedTerms: level.allowedTerms || [],
-      autoApprovalLimit: level.autoApprovalLimit || '',
+      autoApprovalLimit: level.autoApproval?.maxAmount || level.autoApprovalLimit || '',
       isActive: level.isActive
     });
     setShowLevelForm(true);
@@ -310,21 +338,21 @@ const LoanConfiguration = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loanTerms.map((term) => (
-          <div key={term._id} className={`bg-white border rounded-xl p-4 ${!term.enabled ? 'opacity-60 border-gray-100' : 'border-gray-200'}`}>
+          <div key={term.id} className={`bg-white border rounded-xl p-4 ${!term.enabled ? 'opacity-60 border-gray-100' : 'border-gray-200'}`}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h4 className="text-sm font-bold text-gray-800 m-0">{term.displayName || term.name}</h4>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border mt-1 ${term.enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{term.enabled ? 'Active' : 'Inactive'}</span>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => handleToggleTerm(term._id, term.enabled)} disabled={!hasActionPermission('manageLoanTerms')} title={term.enabled ? 'Disable' : 'Enable'}
+                <button onClick={() => handleToggleTerm(term.id, term.enabled)} disabled={!hasActionPermission('manageLoanTerms')} title={term.enabled ? 'Disable' : 'Enable'}
                   className={`w-7 h-7 flex items-center justify-center rounded-lg border transition ${term.enabled ? 'text-emerald-600 bg-emerald-50 border-emerald-100 hover:bg-emerald-100' : 'text-gray-400 bg-gray-50 border-gray-100 hover:bg-gray-100'}`}>
                   {term.enabled ? <FiToggleRight size={14} /> : <FiToggleLeft size={14} />}
                 </button>
                 {hasActionPermission('manageLoanTerms') && (
                   <>
                     <button onClick={() => handleEditTerm(term)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 transition"><FiEdit size={13} /></button>
-                    <button onClick={() => handleDeleteTerm(term._id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition"><FiTrash2 size={13} /></button>
+                    <button onClick={() => handleDeleteTerm(term.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition"><FiTrash2 size={13} /></button>
                   </>
                 )}
               </div>
@@ -332,7 +360,7 @@ const LoanConfiguration = () => {
             <div className="space-y-1 text-xs text-gray-500">
               <div className="flex items-center gap-1.5"><FiCalendar size={11} className="text-gray-400" /> {term.durationDays} days</div>
               <div className="flex items-center gap-1.5"><FiPercent size={11} className="text-gray-400" /> {term.interestRate}% interest</div>
-              {term.serviceFeeRate && <div className="flex items-center gap-1.5"><FiDollarSign size={11} className="text-gray-400" /> {term.serviceFeeRate}% service fee</div>}
+              {(term.serviceFeePct || term.serviceFeeRate) && <div className="flex items-center gap-1.5"><FiDollarSign size={11} className="text-gray-400" /> {term.serviceFeePct || term.serviceFeeRate}% service fee</div>}
               {term.minAmount && term.maxAmount && <div className="flex items-center gap-1.5"><FiDollarSign size={11} className="text-gray-400" /> GHS {term.minAmount} – {term.maxAmount}</div>}
             </div>
           </div>
@@ -388,26 +416,26 @@ const LoanConfiguration = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loanLevels.map((level) => (
-          <div key={level._id} className={`bg-white border rounded-xl p-4 ${!level.isActive ? 'opacity-60 border-gray-100' : 'border-gray-200'}`}>
+          <div key={level.id} className={`bg-white border rounded-xl p-4 ${!level.isActive ? 'opacity-60 border-gray-100' : 'border-gray-200'}`}>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-bold text-gray-800 m-0">{level.name}</h4>
-                  <span className="text-xs font-semibold text-blue-500 bg-blue-50 rounded-full px-2 py-0.5">L{level.levelNumber}</span>
+                  <span className="text-xs font-semibold text-blue-500 bg-blue-50 rounded-full px-2 py-0.5">L{level.level}</span>
                 </div>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border mt-1 ${level.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>{level.isActive ? 'Active' : 'Inactive'}</span>
               </div>
               {hasActionPermission('manageLoanLevels') && (
                 <div className="flex items-center gap-1">
                   <button onClick={() => handleEditLevel(level)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 transition"><FiEdit size={13} /></button>
-                  <button onClick={() => handleDeleteLevel(level._id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition"><FiTrash2 size={13} /></button>
+                  <button onClick={() => handleDeleteLevel(level.id)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 transition"><FiTrash2 size={13} /></button>
                 </div>
               )}
             </div>
             <div className="space-y-1 text-xs text-gray-500">
               <div className="flex items-center gap-1.5"><FiDollarSign size={11} className="text-gray-400" /> GHS {level.minAmount} – {level.maxAmount}</div>
               {level.interestRate && <div className="flex items-center gap-1.5"><FiPercent size={11} className="text-gray-400" /> {level.interestRate}% interest</div>}
-              {level.autoApprovalLimit && <div className="flex items-center gap-1.5"><FiCheckCircle size={11} className="text-emerald-500" /> Auto-approve up to GHS {level.autoApprovalLimit}</div>}
+              {(level.autoApproval?.maxAmount || level.autoApprovalLimit) && <div className="flex items-center gap-1.5"><FiCheckCircle size={11} className="text-emerald-500" /> Auto-approve up to GHS {level.autoApproval?.maxAmount || level.autoApprovalLimit}</div>}
             </div>
           </div>
         ))}

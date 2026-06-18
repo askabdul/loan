@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import { loansAPI } from '../../services/api';
 import './LoanExtension.css';
 
@@ -10,7 +11,8 @@ const LoanExtension = () => {
   const { loanId } = useParams();
   const { user } = useAuth();
   const { showToast } = useToast();
-  
+  const { getConfig } = useConfig();
+
   const [loan, setLoan] = useState(null);
   const [extensionData, setExtensionData] = useState({
     extensionDays: '',
@@ -22,6 +24,11 @@ const LoanExtension = () => {
   const [calculating, setCalculating] = useState(false);
   const [extensionHistory, setExtensionHistory] = useState([]);
   const [eligibilityCheck, setEligibilityCheck] = useState(null);
+  const [extensionPolicy, setExtensionPolicy] = useState({
+    maxExtensionCount: 3,
+    maxDaysPerRequest: 30,
+    maxOverdueDaysForExtension: 30,
+  });
 
   useEffect(() => {
     if (loanId) {
@@ -39,9 +46,22 @@ const LoanExtension = () => {
   const fetchLoanDetails = async () => {
     try {
       setLoading(true);
-      const response = await loansAPI.getLoanById(loanId);
-      setLoan(response.loan);
-      checkEligibility(response.loan);
+      const [loanResponse, extensionStatusResponse] = await Promise.all([
+        loansAPI.getLoanById(loanId),
+        loansAPI.getExtensionStatus(loanId),
+      ]);
+      const loanData = loanResponse?.loan || loanResponse?.data?.loan || null;
+      const policyData =
+        extensionStatusResponse?.data?.policy ||
+        extensionStatusResponse?.policy ||
+        null;
+      if (policyData) {
+        setExtensionPolicy((prev) => ({ ...prev, ...policyData }));
+      }
+      setLoan(loanData);
+      if (loanData) {
+        checkEligibility(loanData, policyData || extensionPolicy);
+      }
     } catch (error) {
       showToast('Error fetching loan details', 'error');
       console.error('Error:', error);
@@ -53,13 +73,13 @@ const LoanExtension = () => {
   const fetchExtensionHistory = async () => {
     try {
       const response = await loansAPI.getExtensionHistory(loanId);
-      setExtensionHistory(response.extensions || []);
+      setExtensionHistory(response.extensions || response.data || []);
     } catch (error) {
       console.error('Error fetching extension history:', error);
     }
   };
 
-  const checkEligibility = (loanData) => {
+  const checkEligibility = (loanData, policy = extensionPolicy) => {
     const eligibility = {
       eligible: true,
       reasons: []
@@ -71,24 +91,22 @@ const LoanExtension = () => {
       eligibility.reasons.push('Loan must be active to request extension');
     }
 
-    // Check extension count limit (max 3 extensions)
-    if (loanData.extensionCount >= 3) {
+    if (loanData.extensionCount >= (policy.maxExtensionCount || 3)) {
       eligibility.eligible = false;
-      eligibility.reasons.push('Maximum extension limit reached (3 extensions)');
+      eligibility.reasons.push(`Maximum extension limit reached (${policy.maxExtensionCount || 3} extensions)`);
     }
 
-    // Check if loan is overdue for more than 30 days
     const dueDate = new Date(loanData.extendedDueDate || loanData.dueDate);
     const today = new Date();
     const daysPastDue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
     
-    if (daysPastDue > 30) {
+    if (daysPastDue > (policy.maxOverdueDaysForExtension || 30)) {
       eligibility.eligible = false;
-      eligibility.reasons.push('Loan is overdue by more than 30 days');
+      eligibility.reasons.push(`Loan is overdue by more than ${policy.maxOverdueDaysForExtension || 30} days`);
     }
 
     // Check if there's a pending extension request
-    if (loanData.pendingExtension) {
+    if (loanData.extensionStatus === 'pending' || loanData.pendingExtension) {
       eligibility.eligible = false;
       eligibility.reasons.push('There is already a pending extension request');
     }
@@ -102,10 +120,13 @@ const LoanExtension = () => {
     try {
       setCalculating(true);
       const response = await loansAPI.calculateExtensionFee(
-        loan.loanId,
+        loan.id,
         parseInt(extensionData.extensionDays)
       );
-      setExtensionFee(response.extensionFee);
+      setExtensionFee(response?.data?.extensionFee ?? response?.extensionFee ?? 0);
+      if (response?.data?.policy) {
+        setExtensionPolicy((prev) => ({ ...prev, ...response.data.policy }));
+      }
     } catch (error) {
       showToast('Error calculating extension fee', 'error');
       console.error('Error:', error);
@@ -151,7 +172,7 @@ const LoanExtension = () => {
     try {
       setSubmitting(true);
       const requestData = {
-        loanId: loan.loanId,
+        loanId: loan.id,
         extensionDays: parseInt(extensionData.extensionDays),
         popFile: extensionData.popFile
       };
@@ -181,8 +202,9 @@ const LoanExtension = () => {
     }
 
     const days = parseInt(extensionData.extensionDays);
-    if (days < 1 || days > 30) {
-      showToast('Extension days must be between 1 and 30', 'error');
+    const maxDays = extensionPolicy.maxDaysPerRequest || loan?.termInDays || 30;
+    if (days < 1 || days > maxDays) {
+      showToast(`Extension days must be between 1 and ${maxDays}`, 'error');
       return false;
     }
 
@@ -240,6 +262,26 @@ const LoanExtension = () => {
     );
   }
 
+  // Feature gate: extension disabled by business decision (enable_extension=false in AppConfig)
+  const extensionEnabled = getConfig('enable_extension', false) === true ||
+                           getConfig('enable_extension', false) === 'true';
+  if (!extensionEnabled) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f3f4f6', padding: 32, maxWidth: 320, width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🚫</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Extensions Not Available</h2>
+          <p style={{ fontSize: 14, color: '#6b7280', marginBottom: 24 }}>
+            Loan extensions are not currently offered. Contact support if you need help with your repayment.
+          </p>
+          <button onClick={() => navigate('/')} style={{ width: '100%', padding: '12px 0', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="loan-extension-container">
       <div className="header">
@@ -281,7 +323,7 @@ const LoanExtension = () => {
           </div>
           <div className="info-item">
             <label>Extensions Used</label>
-            <span>{loan.extensionCount || 0} / 3</span>
+            <span>{loan.extensionCount || 0} / {extensionPolicy.maxExtensionCount || 3}</span>
           </div>
         </div>
       </div>
@@ -307,14 +349,14 @@ const LoanExtension = () => {
         <div className="extension-form-card">
           <h2>Request Extension</h2>
           <div className="form-group">
-            <label>Extension Days (1-30)</label>
+            <label>Extension Days (1-{extensionPolicy.maxDaysPerRequest || loan?.termInDays || 30})</label>
             <input
               type="number"
               name="extensionDays"
               value={extensionData.extensionDays}
               onChange={handleInputChange}
               min="1"
-              max="30"
+              max={extensionPolicy.maxDaysPerRequest || loan?.termInDays || 30}
               placeholder="Enter number of days"
             />
           </div>

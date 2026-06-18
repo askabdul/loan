@@ -1,7 +1,7 @@
 const express = require('express');
 const { Op, fn, col, literal } = require('sequelize');
 const { adminAuth, auth: userAuth } = require('../middleware/auth');
-const { requireMenuAccess } = require('../middleware/roleAuth');
+const { requireMenuAccess, requireSubMenuAccess } = require('../middleware/roleAuth');
 const websocketService = require('../services/websocketService');
 const { Loan, User, Payment, Notification } = require('../models');
 const catchAsync = require('../utils/catchAsync');
@@ -9,7 +9,7 @@ const catchAsync = require('../utils/catchAsync');
 const router = express.Router();
 
 // GET /api/realtime/admin/dashboard/live
-router.get('/admin/dashboard/live', adminAuth, requireMenuAccess('dashboard'), catchAsync(async (req, res, next) => {
+router.get('/admin/dashboard/live', adminAuth, requireMenuAccess('dataStatistics'), requireSubMenuAccess('dataStatistics', 'dashboard'), catchAsync(async (req, res, next) => {
   const [loanStats, userStats, paymentStats] = await Promise.all([
     Loan.findAll({ attributes: ['status', [fn('COUNT', col('id')), 'count'], [fn('SUM', col('amount')), 'totalAmount']], group: ['status'], raw: true }),
     User.findAll({ attributes: [[fn('COUNT', col('id')), 'totalUsers'], [fn('SUM', literal("CASE WHEN is_active = true THEN 1 ELSE 0 END")), 'activeUsers']], raw: true }),
@@ -22,7 +22,7 @@ router.get('/admin/dashboard/live', adminAuth, requireMenuAccess('dashboard'), c
 }));
 
 // GET /api/realtime/admin/loans/live
-router.get('/admin/loans/live', adminAuth, requireMenuAccess('loanManagement'), catchAsync(async (req, res, next) => {
+router.get('/admin/loans/live', adminAuth, requireMenuAccess('creditReview'), requireSubMenuAccess('creditReview', 'list'), catchAsync(async (req, res, next) => {
   const { page = 1, limit = 20, status } = req.query;
   const where = {};
   if (status) where.status = status;
@@ -35,7 +35,7 @@ router.get('/admin/loans/live', adminAuth, requireMenuAccess('loanManagement'), 
 }));
 
 // GET /api/realtime/admin/users/live
-router.get('/admin/users/live', adminAuth, requireMenuAccess('userManagement'), catchAsync(async (req, res, next) => {
+router.get('/admin/users/live', adminAuth, requireMenuAccess('userManagement'), requireSubMenuAccess('user', 'listOfUsers'), catchAsync(async (req, res, next) => {
   const { page = 1, limit = 20, status, search } = req.query;
   const where = {};
   if (status) where.isActive = status === 'active';

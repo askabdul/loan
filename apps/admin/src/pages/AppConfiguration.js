@@ -18,6 +18,44 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import apiService from "../services/api";
 
+const CONFIG_KEY_ALIASES = {
+  minLoanAmount: ["min_loan_amount"],
+  maxLoanAmount: ["max_loan_amount"],
+  defaultInterestRate: ["default_interest_rate"],
+  autoApprovalLimit: ["auto_approval_limit"],
+  requireCollateral: ["require_collateral"],
+  maxLoanTerm: ["max_loan_term"],
+  minCreditScore: ["min_credit_score"],
+  processingFee: ["processing_fee_percentage", "processing_fee_flat"],
+  appName: ["app_name"],
+  maintenanceMode: ["maintenance_mode"],
+  maxFileUploadSize: ["max_file_upload_size"],
+  sessionTimeout: ["session_timeout"],
+  enableNotifications: ["enable_notifications"],
+  defaultLanguage: ["default_language"],
+  passwordMinLength: ["password_min_length"],
+  requirePasswordComplexity: ["require_password_complexity"],
+  maxLoginAttempts: ["max_login_attempts"],
+  lockoutDuration: ["lockout_duration"],
+  enableTwoFactor: ["enable_two_factor"],
+  smtpHost: ["smtp_host"],
+  smtpPort: ["smtp_port"],
+  smtpUsername: ["smtp_username"],
+  smtpPassword: ["smtp_password"],
+  fromEmail: ["from_email"],
+  fromName: ["from_name"],
+  enableSSL: ["enable_ssl"],
+  rateLimitWindow: ["rate_limit_window"],
+  rateLimitMax: ["rate_limit_max"],
+  enableCors: ["enable_cors"],
+  corsOrigins: ["cors_origins"],
+  apiVersion: ["api_version"],
+  connectionPoolSize: ["connection_pool_size"],
+  queryTimeout: ["query_timeout"],
+  enableQueryLogging: ["enable_query_logging"],
+  backupRetentionDays: ["backup_retention_days"],
+};
+
 const AppConfiguration = () => {
   const { hasActionPermission, isSuperAdmin } = useAuth();
   const [config, setConfig] = useState(null);
@@ -31,13 +69,13 @@ const AppConfiguration = () => {
 
   const configTabs = [
     { id: "loan", label: "Loan Settings", icon: FiDollarSign },
-    { id: "loanCalculations", label: "Loan Calculations", icon: FiDollarSign },
-    { id: "contactInfo", label: "Contact Info", icon: FiMail },
-    { id: "appBranding", label: "App Branding", icon: FiSettings },
-    { id: "system", label: "System Settings", icon: FiSettings },
+    { id: "loanCalculations", label: "Fee Rates", icon: FiDollarSign },
+    { id: "contactInfo", label: "Contact Info", icon: FiGlobe },
+    { id: "appBranding", label: "Branding", icon: FiInfo },
+    { id: "system", label: "System", icon: FiSettings },
     { id: "security", label: "Security", icon: FiShield },
-    { id: "email", label: "Email Configuration", icon: FiMail },
-    { id: "api", label: "API Settings", icon: FiGlobe },
+    { id: "email", label: "Email", icon: FiMail },
+    { id: "api", label: "API", icon: FiGlobe },
     { id: "database", label: "Database", icon: FiDatabase },
   ];
 
@@ -45,11 +83,16 @@ const AppConfiguration = () => {
     try {
       setLoading(true);
       const response = await apiService.getConfiguration();
-      const configData = response.data || [];
+      const configData = Array.isArray(response.data)
+        ? response.data
+        : Object.entries(response.config || {}).map(([key, value]) => ({ key, value }));
 
       // Transform array of config objects to categorized structure
       const categorizedConfig = {
         loan: {},
+        loanCalculations: {},
+        contactInfo: {},
+        appBranding: {},
         system: {},
         security: {},
         email: {},
@@ -57,29 +100,107 @@ const AppConfiguration = () => {
         database: {},
       };
 
+      // Explicit key-to-category routing (checked before keyword fallback)
+      const EXPLICIT_ROUTES = {
+        // Loan lifecycle / policy
+        auto_disburse_on_approval: "loan",
+        activate_loan_on_disbursement: "loan",
+        overdue_day_count_mode: "loan",
+        loan_extension_daily_fee_rate: "loan",
+        max_extension_days_per_request: "loan",
+        max_extension_count: "loan",
+        max_overdue_days_for_extension: "loan",
+        reserve_release_days: "loan",
+        // Fee-rate keys (canonical: {type}_{term}_days)
+        interest_rate_7_days: "loanCalculations",
+        service_fee_7_days: "loanCalculations",
+        admin_fee_7_days: "loanCalculations",
+        commitment_fee_7_days: "loanCalculations",
+        interest_rate_14_days: "loanCalculations",
+        service_fee_14_days: "loanCalculations",
+        admin_fee_14_days: "loanCalculations",
+        commitment_fee_14_days: "loanCalculations",
+        interest_rate_30_days: "loanCalculations",
+        service_fee_30_days: "loanCalculations",
+        admin_fee_30_days: "loanCalculations",
+        commitment_fee_30_days: "loanCalculations",
+        overdue_fee_daily_pct: "loanCalculations",
+        // Contact info
+        support_phone: "contactInfo",
+        support_email: "contactInfo",
+        support_whatsapp: "contactInfo",
+        office_address: "contactInfo",
+        business_hours: "contactInfo",
+        emergency_contact: "contactInfo",
+        // App branding
+        app_name: "appBranding",
+        app_tagline: "appBranding",
+        app_description: "appBranding",
+        company_name: "appBranding",
+        company_logo_url: "appBranding",
+        app_version: "appBranding",
+        // System
+        dashboard_refresh_interval_seconds: "system",
+        dashboard_cache_ttl_seconds: "system",
+      };
+
       configData.forEach((config) => {
         const key = config.key;
         const value = config.value;
 
-        // Categorize based on key prefixes or patterns
+        if (EXPLICIT_ROUTES[key]) {
+          categorizedConfig[EXPLICIT_ROUTES[key]][key] = value;
+          return;
+        }
+
+        // Keyword-based fallback categorisation
         if (
+          key.match(/_\d+_days$/) ||
+          key.includes("overdue_fee")
+        ) {
+          categorizedConfig.loanCalculations[key] = value;
+        } else if (
           key.includes("loan") ||
           key.includes("interest") ||
           key.includes("amount") ||
-          key.includes("term")
+          key.includes("term") ||
+          key.includes("overdue") ||
+          key.includes("disburse") ||
+          key.includes("extension") ||
+          key.includes("reserve")
         ) {
           categorizedConfig.loan[key] = value;
         } else if (
-          key.includes("app") ||
+          key.startsWith("support_") ||
+          key.startsWith("office_") ||
+          key.startsWith("business_") ||
+          key.startsWith("emergency_")
+        ) {
+          categorizedConfig.contactInfo[key] = value;
+        } else if (
+          key.startsWith("app_") ||
+          key.startsWith("company_") ||
+          key.includes("branding") ||
+          key.includes("logo")
+        ) {
+          categorizedConfig.appBranding[key] = value;
+        } else if (
+          key.includes("maintenance") ||
           key.includes("system") ||
-          key.includes("maintenance")
+          key.includes("language") ||
+          key.includes("notification") ||
+          key.includes("upload") ||
+          key.includes("session")
         ) {
           categorizedConfig.system[key] = value;
         } else if (
           key.includes("jwt") ||
           key.includes("password") ||
           key.includes("security") ||
-          key.includes("auth")
+          key.includes("auth") ||
+          key.includes("login") ||
+          key.includes("lockout") ||
+          key.includes("two_factor")
         ) {
           categorizedConfig.security[key] = value;
         } else if (
@@ -90,7 +211,8 @@ const AppConfiguration = () => {
           categorizedConfig.email[key] = value;
         } else if (
           key.includes("api") ||
-          key.includes("rate") ||
+          key.includes("rate_limit") ||
+          key.includes("cors") ||
           key.includes("timeout")
         ) {
           categorizedConfig.api[key] = value;
@@ -98,12 +220,53 @@ const AppConfiguration = () => {
           key.includes("db") ||
           key.includes("database") ||
           key.includes("connection") ||
-          key.includes("pool")
+          key.includes("pool") ||
+          key.includes("backup") ||
+          key.includes("query")
         ) {
           categorizedConfig.database[key] = value;
         } else {
-          // Default to system category for uncategorized items
           categorizedConfig.system[key] = value;
+        }
+      });
+
+      Object.entries(CONFIG_KEY_ALIASES).forEach(([primaryKey, aliases]) => {
+        const targetCategory = Object.keys(categorizedConfig).find((category) =>
+          Object.prototype.hasOwnProperty.call(categorizedConfig[category], primaryKey),
+        );
+        if (targetCategory) return;
+
+        const sourceCategory = Object.keys(categorizedConfig).find((category) =>
+          aliases.some((alias) =>
+            Object.prototype.hasOwnProperty.call(categorizedConfig[category], alias),
+          ),
+        );
+
+        if (sourceCategory) {
+          const aliasKey = aliases.find((alias) =>
+            Object.prototype.hasOwnProperty.call(categorizedConfig[sourceCategory], alias),
+          );
+          categorizedConfig[sourceCategory][primaryKey] =
+            categorizedConfig[sourceCategory][aliasKey];
+        }
+      });
+
+      const loanSettingDefaults = {
+        auto_disburse_on_approval: true,
+        activate_loan_on_disbursement: true,
+        overdue_day_count_mode: "calendar_midnight",
+        loan_extension_daily_fee_rate: 0.02,
+        max_extension_days_per_request: 30,
+        max_extension_count: 3,
+        max_overdue_days_for_extension: 30,
+        reserve_release_days: 10,
+        dashboard_refresh_interval_seconds: 60,
+        dashboard_cache_ttl_seconds: 30,
+      };
+      Object.entries(loanSettingDefaults).forEach(([key, defaultValue]) => {
+        const targetCategory = key.startsWith("dashboard_") ? "system" : "loan";
+        if (categorizedConfig[targetCategory][key] === undefined) {
+          categorizedConfig[targetCategory][key] = defaultValue;
         }
       });
 
@@ -133,7 +296,8 @@ const AppConfiguration = () => {
 
     try {
       setSaving(true);
-      await apiService.updateConfig(key, value);
+      const backendKey = CONFIG_KEY_ALIASES[key]?.[0] || key;
+      await apiService.updateConfig(backendKey, value);
 
       // Update local state
       setConfig((prev) => ({
@@ -141,6 +305,7 @@ const AppConfiguration = () => {
         [category]: {
           ...prev[category],
           [key]: value,
+          [backendKey]: value,
         },
       }));
 
@@ -183,9 +348,10 @@ const AppConfiguration = () => {
   const renderConfigField = (category, key, field) => {
     const fieldKey = `${category}.${key}`;
     const isEditing = editMode[fieldKey];
+    const baseValue = config[category][key];
     const currentValue = isEditing
       ? tempValues[fieldKey]
-      : config[category][key];
+      : baseValue;
     const isSensitive = field.sensitive;
     const isVisible = showSensitive[fieldKey];
     const canEdit = isSuperAdmin() || hasActionPermission("updateConfig");
@@ -249,7 +415,7 @@ const AppConfiguration = () => {
               ) : field.type === "number" ? (
                 <input
                   type="number"
-                  value={currentValue}
+                  value={currentValue ?? 0}
                   onChange={(e) =>
                     handleInputChange(category, key, parseFloat(e.target.value))
                   }
@@ -298,9 +464,11 @@ const AppConfiguration = () => {
                 </span>
               ) : (
                 <span className="text-sm text-gray-700">
-                  {field.type === "number" && field.unit
-                    ? `${currentValue} ${field.unit}`
-                    : String(currentValue ?? "")}
+                  {currentValue === undefined || currentValue === null || currentValue === ""
+                    ? "Not set"
+                    : field.type === "number" && field.unit
+                      ? `${currentValue} ${field.unit}`
+                      : String(currentValue)}
                 </span>
               )}
             </div>
@@ -390,6 +558,76 @@ const AppConfiguration = () => {
           unit: "GHS",
           min: 0,
         },
+        auto_disburse_on_approval: {
+          label: "Auto Disburse on Approval",
+          description:
+            "When enabled, approved loans are disbursed immediately without manual disbursement step",
+          type: "boolean",
+        },
+        activate_loan_on_disbursement: {
+          label: "Activate Loan on Disbursement",
+          description:
+            "When enabled, disbursement immediately sets loan status to active and starts repayment clock",
+          type: "boolean",
+        },
+        overdue_day_count_mode: {
+          label: "Overdue Day Counting Mode",
+          description:
+            "Choose how overdue days are counted after due date is reached",
+          type: "select",
+          options: [
+            {
+              value: "calendar_midnight",
+              label: "Calendar Midnight (11:59pm -> 12:00am counts next day)",
+            },
+            {
+              value: "elapsed_24h",
+              label: "Elapsed 24 Hours",
+            },
+          ],
+        },
+        loan_extension_daily_fee_rate: {
+          label: "Loan Extension Daily Fee Rate",
+          description: "Daily extension fee rate as decimal (e.g. 0.02 = 2%)",
+          type: "number",
+          required: true,
+          min: 0,
+          max: 1,
+          step: 0.001,
+        },
+        max_extension_days_per_request: {
+          label: "Max Extension Days Per Request",
+          description: "Maximum extension days allowed in one request",
+          type: "number",
+          unit: "days",
+          min: 1,
+          max: 365,
+        },
+        max_extension_count: {
+          label: "Max Extension Count",
+          description: "Maximum number of extensions allowed per loan",
+          type: "number",
+          min: 1,
+          max: 20,
+        },
+        max_overdue_days_for_extension: {
+          label: "Max Overdue Days For Extension",
+          description:
+            "Loans overdue beyond this threshold cannot be extended",
+          type: "number",
+          unit: "days",
+          min: 0,
+          max: 3650,
+        },
+        reserve_release_days: {
+          label: "Reserve Release Days",
+          description:
+            "Hung-up reserved cases auto-release after this many days",
+          type: "number",
+          unit: "days",
+          min: 1,
+          max: 365,
+        },
         requireCollateral: {
           label: "Require Collateral",
           description: "Whether collateral is required for loans",
@@ -400,11 +638,11 @@ const AppConfiguration = () => {
     loanCalculations: {
       title: "Dynamic Loan Calculations",
       description:
-        "Configure term-specific interest rates and fee structures for 7, 14, and 30-day loans",
+        "Term-specific interest rates and fee structures for 7, 14, and 30-day loans. Changes apply immediately to new loan applications.",
       fields: {
-        loan_7_days_interest_rate: {
+        interest_rate_7_days: {
           label: "7 Days - Interest Rate",
-          description: "Interest rate for 7-day loans",
+          description: "Interest rate % for 7-day loans",
           type: "number",
           unit: "%",
           required: true,
@@ -412,36 +650,36 @@ const AppConfiguration = () => {
           max: 100,
           step: 0.01,
         },
-        loan_7_days_service_fee: {
+        service_fee_7_days: {
           label: "7 Days - Service Fee",
-          description: "Service fee percentage for 7-day loans",
+          description: "Service fee % for 7-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_7_days_admin_fee: {
+        admin_fee_7_days: {
           label: "7 Days - Admin Fee",
-          description: "Administration fee percentage for 7-day loans",
+          description: "Administration fee % for 7-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_7_days_commitment_fee: {
+        commitment_fee_7_days: {
           label: "7 Days - Commitment Fee",
-          description: "Commitment fee percentage for 7-day loans",
+          description: "Commitment fee % for 7-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_14_days_interest_rate: {
+        interest_rate_14_days: {
           label: "14 Days - Interest Rate",
-          description: "Interest rate for 14-day loans",
+          description: "Interest rate % for 14-day loans",
           type: "number",
           unit: "%",
           required: true,
@@ -449,36 +687,36 @@ const AppConfiguration = () => {
           max: 100,
           step: 0.01,
         },
-        loan_14_days_service_fee: {
+        service_fee_14_days: {
           label: "14 Days - Service Fee",
-          description: "Service fee percentage for 14-day loans",
+          description: "Service fee % for 14-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_14_days_admin_fee: {
+        admin_fee_14_days: {
           label: "14 Days - Admin Fee",
-          description: "Administration fee percentage for 14-day loans",
+          description: "Administration fee % for 14-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_14_days_commitment_fee: {
+        commitment_fee_14_days: {
           label: "14 Days - Commitment Fee",
-          description: "Commitment fee percentage for 14-day loans",
+          description: "Commitment fee % for 14-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_30_days_interest_rate: {
+        interest_rate_30_days: {
           label: "30 Days - Interest Rate",
-          description: "Interest rate for 30-day loans",
+          description: "Interest rate % for 30-day loans",
           type: "number",
           unit: "%",
           required: true,
@@ -486,31 +724,40 @@ const AppConfiguration = () => {
           max: 100,
           step: 0.01,
         },
-        loan_30_days_service_fee: {
+        service_fee_30_days: {
           label: "30 Days - Service Fee",
-          description: "Service fee percentage for 30-day loans",
+          description: "Service fee % for 30-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_30_days_admin_fee: {
+        admin_fee_30_days: {
           label: "30 Days - Admin Fee",
-          description: "Administration fee percentage for 30-day loans",
+          description: "Administration fee % for 30-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
           step: 0.01,
         },
-        loan_30_days_commitment_fee: {
+        commitment_fee_30_days: {
           label: "30 Days - Commitment Fee",
-          description: "Commitment fee percentage for 30-day loans",
+          description: "Commitment fee % for 30-day loans",
           type: "number",
           unit: "%",
           min: 0,
           max: 100,
+          step: 0.01,
+        },
+        overdue_fee_daily_pct: {
+          label: "Overdue Daily Penalty",
+          description: "Daily penalty as % of remaining balance for overdue loans",
+          type: "number",
+          unit: "%",
+          min: 0,
+          max: 20,
           step: 0.01,
         },
       },
@@ -628,6 +875,24 @@ const AppConfiguration = () => {
           label: "Enable Notifications",
           description: "Allow the system to send notifications",
           type: "boolean",
+        },
+        dashboard_refresh_interval_seconds: {
+          label: "Dashboard Refresh Interval",
+          description:
+            "How often dashboard pages auto-refresh analytics from the server",
+          type: "number",
+          unit: "seconds",
+          min: 10,
+          max: 3600,
+        },
+        dashboard_cache_ttl_seconds: {
+          label: "Dashboard Cache TTL",
+          description:
+            "Server-side WebSocket dashboard cache time-to-live in seconds",
+          type: "number",
+          unit: "seconds",
+          min: 5,
+          max: 600,
         },
         defaultLanguage: {
           label: "Default Language",

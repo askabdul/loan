@@ -1,11 +1,194 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { useToast } from "../../contexts/ToastContext";
 import { useSocket } from "../../contexts/SocketContext";
 import { loansAPI, usersAPI } from "../../services/api";
 import configAPI from "../../services/configAPI";
 import ContentAPI from "../../services/contentAPI";
+
+const DEFAULT_PROCESS_GUIDE = [
+  {
+    num: "1",
+    color: "bg-cyan-500",
+    title: "Registration",
+    desc: "Create your CEDI account by providing your phone number and basic personal information. New users will receive verification.",
+  },
+  {
+    num: "2",
+    color: "bg-blue-600",
+    title: "Login",
+    desc: "Login with SMS OTP (new customers) or Phone PIN (returning customers). Secure access to your account.",
+  },
+  {
+    num: "3",
+    color: "bg-emerald-600",
+    title: "Apply for Loan",
+    desc: "Complete your loan application by uploading NRC documents, providing references, and selecting loan amount.",
+  },
+  {
+    num: "4",
+    color: "bg-amber-500",
+    title: "Repayment",
+    desc: "Repay your loan through the app, dial *885*3134#, or use mobile money. Easy and convenient payment options.",
+  },
+];
+
+const DEFAULT_FAQ = [
+  {
+    q: "What is the minimum and maximum loan amount I can apply for?",
+    a: "CEDI offers flexible loan amounts ranging from GHS 500 to GHS 50,000. The exact amount you qualify for depends on your credit profile, income verification, and repayment history with us.",
+  },
+  {
+    q: "How long does it take to get loan approval?",
+    a: "Most loan applications are processed within 24–48 hours. New customers may take slightly longer (up to 72 hours) as we verify your information. Once approved, funds are disbursed immediately to your mobile money account.",
+  },
+  {
+    q: "What documents do I need to apply?",
+    a: "You need a valid National Registration Card (NRC), a selfie with your NRC, and contact information for two references. All documents can be uploaded directly through the app.",
+  },
+  {
+    q: "How do I repay my loan?",
+    a: "You can repay through the app by clicking 'Pay The Bill', or dial *885*3134# from your registered phone number. We also accept payments through mobile money and bank transfers.",
+  },
+  {
+    q: "What happens if I miss a payment?",
+    a: "We understand that sometimes circumstances change. Contact our customer service immediately if you anticipate difficulty making a payment. Late payments may incur additional fees and affect your credit score with us.",
+  },
+  {
+    q: "Is my personal information secure?",
+    a: "Yes, CEDI uses bank-level encryption and security measures to protect your personal and financial information. We comply with all data protection regulations and never share your information with unauthorized third parties.",
+  },
+];
+
+const GUIDE_COLORS = ["bg-cyan-500", "bg-blue-600", "bg-emerald-600", "bg-amber-500", "bg-purple-500", "bg-rose-500"];
+
+const normalizeProcessGuide = (items = []) => {
+  if (!Array.isArray(items) || items.length === 0) return DEFAULT_PROCESS_GUIDE;
+
+  const mapped = items
+    .map((item, index) => {
+      const content = item?.content;
+      const title =
+        item?.title ||
+        content?.title ||
+        content?.name ||
+        `Step ${index + 1}`;
+      const desc =
+        content?.description ||
+        content?.shortDescription ||
+        content?.text ||
+        (typeof content === "string" ? content : "");
+
+      return {
+        num: String(index + 1),
+        color: item?.metadata?.color || GUIDE_COLORS[index % GUIDE_COLORS.length],
+        title,
+        desc: desc || "No additional details available.",
+        actionUrl: content?.actionUrl || item?.metadata?.actionUrl || null,
+      };
+    })
+    .filter((step) => step.title || step.desc);
+
+  return mapped.length ? mapped : DEFAULT_PROCESS_GUIDE;
+};
+
+const normalizeFaq = (items = []) => {
+  if (!Array.isArray(items) || items.length === 0) return DEFAULT_FAQ;
+
+  const entries = [];
+  items.forEach((item) => {
+    const content = item?.content;
+
+    if (Array.isArray(content)) {
+      content.forEach((entry) => {
+        entries.push({
+          q: entry?.question || entry?.q || "",
+          a: entry?.answer || entry?.a || entry?.content || "",
+        });
+      });
+      return;
+    }
+
+    if (content && typeof content === "object") {
+      entries.push({
+        q: content?.question || content?.q || item?.title || "",
+        a: content?.answer || content?.a || content?.text || content?.description || "",
+      });
+      return;
+    }
+
+    entries.push({
+      q: item?.title || "",
+      a: typeof content === "string" ? content : "",
+    });
+  });
+
+  const cleaned = entries.filter((entry) => entry.q && entry.a);
+  return cleaned.length ? cleaned : DEFAULT_FAQ;
+};
+
+const buildContactCards = ({ supportContact, contentContacts }) => {
+  const dynamicCards = Array.isArray(contentContacts)
+    ? contentContacts
+        .flatMap((item) => {
+          const content = item?.content;
+          if (Array.isArray(content)) return content;
+          if (content && typeof content === "object") return [content];
+          return [];
+        })
+        .map((entry) => ({
+          type: entry?.type || "custom",
+          value: entry?.value || entry?.contact || "",
+          title: entry?.title || entry?.label || "Contact",
+          subtitle: entry?.subtitle || entry?.description || "",
+          icon: entry?.icon || "📌",
+          iconBg: entry?.iconBg || "bg-gray-100",
+          iconColor: entry?.iconColor || "text-gray-600",
+        }))
+        .filter((entry) => entry.value)
+    : [];
+
+  if (dynamicCards.length) return dynamicCards;
+
+  return [
+    {
+      type: "whatsapp",
+      value: supportContact?.whatsapp || "+260971234567",
+      title: "WhatsApp",
+      subtitle: `${supportContact?.whatsapp || "+260 97 123 4567"} · Chat with us`,
+      icon: "💬",
+      iconBg: "bg-emerald-100",
+      iconColor: "text-emerald-600",
+    },
+    {
+      type: "phone",
+      value: supportContact?.phone || "+260212345678",
+      title: "Call Centre",
+      subtitle: `${supportContact?.phone || "+260 21 234 5678"} · ${supportContact?.businessHours || "Mon–Sat, 8am–6pm"}`,
+      icon: "📞",
+      iconBg: "bg-cyan-100",
+      iconColor: "text-cyan-600",
+    },
+    {
+      type: "ussd",
+      value: "*885*3134#",
+      title: "USSD Repayment",
+      subtitle: "Dial *885*3134# from your phone",
+      icon: "📱",
+      iconBg: "bg-purple-100",
+      iconColor: "text-purple-600",
+    },
+    {
+      type: "email",
+      value: supportContact?.email || "customer@cedilending.com",
+      title: "Email Support",
+      subtitle: supportContact?.email || "customer@cedilending.com",
+      icon: "✉️",
+      iconBg: "bg-amber-100",
+      iconColor: "text-amber-600",
+    },
+  ];
+};
 
 // Add inline styles for contact cards
 const contactCardStyles = `
@@ -42,7 +225,6 @@ if (typeof document !== "undefined") {
 const Home = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { showToast } = useToast();
   useSocket(); // Initialize socket connection
   const [userStats, setUserStats] = useState({
     availableCredit: 0,
@@ -56,21 +238,33 @@ const Home = () => {
   const [showFAQ, setShowFAQ] = useState(false);
 
   const [appConfig, setAppConfig] = useState(null);
+  const [appBranding, setAppBranding] = useState(null);
+  const [supportContact, setSupportContact] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
-  const [processGuide, setProcessGuide] = useState([]);
-  const [faqData, setFaqData] = useState([]);
   const [contactInfo, setContactInfo] = useState([]);
   const [contentLoading, setContentLoading] = useState(true);
   const [expandedFaq, setExpandedFaq] = useState(null);
+  const [guideSteps, setGuideSteps] = useState(DEFAULT_PROCESS_GUIDE);
+  const [faqItems, setFaqItems] = useState(DEFAULT_FAQ);
 
   // Fetch app configuration
   useEffect(() => {
     const fetchAppConfig = async () => {
       try {
-        const configResponse = await configAPI.getCachedConfigs();
+        const [configResponse, brandingResponse, contactResponse] =
+          await Promise.all([
+            configAPI.getCachedConfigs(),
+            configAPI.getAppBranding(),
+            configAPI.getContactInfo(),
+          ]);
         if (configResponse.success) {
           setAppConfig(configResponse.data);
-          // Config loaded successfully
+        }
+        if (brandingResponse?.success) {
+          setAppBranding(brandingResponse.data || null);
+        }
+        if (contactResponse?.success) {
+          setSupportContact(contactResponse.data || null);
         }
       } catch (error) {
         console.error("Error fetching app config:", error);
@@ -95,11 +289,14 @@ const Home = () => {
           ContentAPI.getContactInfo(),
         ]);
 
-        setProcessGuide(processGuideData);
-        setFaqData(faqContent);
         setContactInfo(contactData);
+
+        setGuideSteps(normalizeProcessGuide(processGuideData));
+        setFaqItems(normalizeFaq(faqContent));
       } catch (error) {
         console.error("Error fetching content:", error);
+        setGuideSteps(DEFAULT_PROCESS_GUIDE);
+        setFaqItems(DEFAULT_FAQ);
       } finally {
         setContentLoading(false);
       }
@@ -168,7 +365,7 @@ const Home = () => {
   }, [user, appConfig, configLoading]);
 
   const handleContactClick = (contact) => {
-    const { type, value, displayText } = contact;
+    const { type, value } = contact;
 
     switch (type) {
       case "whatsapp":
@@ -179,6 +376,10 @@ const Home = () => {
         break;
       case "email":
         window.open(`mailto:${value}`);
+        break;
+      case "website":
+      case "url":
+        window.open(value, "_blank");
         break;
       case "faq":
         // Scroll to FAQ section
@@ -191,28 +392,26 @@ const Home = () => {
         window.prompt("Dial this USSD code:", value);
         break;
       default:
-        console.log("Contact clicked:", contact.title);
+        if (value) window.prompt("Contact:", value);
+        else console.log("Contact clicked:", contact.title);
     }
   };
 
   const handleProcessStepClick = (step, index) => {
     // Show detailed information about the process step
-    const stepDetails =
-      step.content?.fullDescription ||
-      step.content?.description ||
-      "No additional details available.";
+    const stepDetails = step.desc || "No additional details available.";
     const stepTitle = step.title || `Step ${index + 1}`;
 
     // Create a modal-like alert with step details
     const message = `${stepTitle}\n\n${stepDetails}`;
 
-    if (step.content?.actionUrl) {
+    if (step.actionUrl) {
       // If there's an action URL, ask user if they want to navigate
       const shouldNavigate = window.confirm(
         `${message}\n\nWould you like to proceed with this step?`,
       );
       if (shouldNavigate) {
-        window.open(step.content.actionUrl, "_blank");
+        window.open(step.actionUrl, "_blank");
       }
     } else {
       // Just show the information
@@ -222,6 +421,9 @@ const Home = () => {
 
   return (
     <div className="max-w-xl mx-auto px-4 pt-8 pb-28 space-y-5">
+      {contentLoading && (
+        <div className="text-xs text-gray-400">Loading content...</div>
+      )}
       {/* Hero / Welcome Card */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl shadow-md p-7 text-white">
         <p className="text-blue-200 text-xs font-semibold uppercase tracking-widest mb-2">
@@ -236,7 +438,7 @@ const Home = () => {
               : ""}
         </h2>
         <p className="text-blue-200 text-sm mt-1">
-          Your trusted partner for quick and easy loans
+          {appBranding?.tagline || "Your trusted partner for quick and easy loans"}
         </p>
       </div>
 
@@ -380,33 +582,12 @@ const Home = () => {
         </button>
         {showGuide && (
           <div className="px-5 pt-2 pb-6 space-y-5 border-t border-gray-100">
-            {[
-              {
-                num: "1",
-                color: "bg-cyan-500",
-                title: "Registration",
-                desc: "Create your CEDI account by providing your phone number and basic personal information. New users will receive verification.",
-              },
-              {
-                num: "2",
-                color: "bg-blue-600",
-                title: "Login",
-                desc: "Login with SMS OTP (new customers) or Phone PIN (returning customers). Secure access to your account.",
-              },
-              {
-                num: "3",
-                color: "bg-emerald-600",
-                title: "Apply for Loan",
-                desc: "Complete your loan application by uploading NRC documents, providing references, and selecting loan amount.",
-              },
-              {
-                num: "4",
-                color: "bg-amber-500",
-                title: "Repayment",
-                desc: "Repay your loan through the app, dial *885*3134#, or use mobile money. Easy and convenient payment options.",
-              },
-            ].map((step) => (
-              <div key={step.num} className="flex gap-4 pt-3">
+            {guideSteps.map((step, index) => (
+              <div
+                key={`${step.num}-${step.title}`}
+                className="flex gap-4 pt-3 process-step-card"
+                onClick={() => handleProcessStepClick(step, index)}
+              >
                 <div
                   className={`${step.color} text-white rounded-full w-9 h-9 flex items-center justify-center flex-shrink-0 text-sm font-bold shadow-sm`}
                 >
@@ -437,32 +618,7 @@ const Home = () => {
         </button>
         {showFAQ && (
           <div className="border-t border-gray-100" id="faqAccordion">
-            {[
-              {
-                q: "What is the minimum and maximum loan amount I can apply for?",
-                a: "CEDI offers flexible loan amounts ranging from GHS 500 to GHS 50,000. The exact amount you qualify for depends on your credit profile, income verification, and repayment history with us.",
-              },
-              {
-                q: "How long does it take to get loan approval?",
-                a: "Most loan applications are processed within 24–48 hours. New customers may take slightly longer (up to 72 hours) as we verify your information. Once approved, funds are disbursed immediately to your mobile money account.",
-              },
-              {
-                q: "What documents do I need to apply?",
-                a: "You need a valid National Registration Card (NRC), a selfie with your NRC, and contact information for two references. All documents can be uploaded directly through the app.",
-              },
-              {
-                q: "How do I repay my loan?",
-                a: "You can repay through the app by clicking 'Pay The Bill', or dial *885*3134# from your registered phone number. We also accept payments through mobile money and bank transfers.",
-              },
-              {
-                q: "What happens if I miss a payment?",
-                a: "We understand that sometimes circumstances change. Contact our customer service immediately if you anticipate difficulty making a payment. Late payments may incur additional fees and affect your credit score with us.",
-              },
-              {
-                q: "Is my personal information secure?",
-                a: "Yes, CEDI uses bank-level encryption and security measures to protect your personal and financial information. We comply with all data protection regulations and never share your information with unauthorized third parties.",
-              },
-            ].map((item, idx) => (
+            {faqItems.map((item, idx) => (
               <div key={idx} className="border-b border-gray-100 last:border-0">
                 <button
                   className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
@@ -496,81 +652,34 @@ const Home = () => {
           Contact Us
         </p>
         <div className="divide-y divide-gray-100">
-          <div
-            className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() =>
-              handleContactClick({ type: "whatsapp", value: "+260971234567" })
-            }
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-emerald-600">💬</span>
-            </div>
-            <div className="flex-grow min-w-0">
-              <p className="text-sm font-semibold text-gray-700">WhatsApp</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                +260 97 123 4567 · Chat with us
-              </p>
-            </div>
-            <span className="text-gray-300">›</span>
-          </div>
-          <div
-            className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() =>
-              handleContactClick({ type: "phone", value: "+260212345678" })
-            }
-          >
-            <div className="w-10 h-10 rounded-xl bg-cyan-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-cyan-600">📞</span>
-            </div>
-            <div className="flex-grow min-w-0">
-              <p className="text-sm font-semibold text-gray-700">Call Centre</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                +260 21 234 5678 · Mon–Sat, 8am–6pm
-              </p>
-            </div>
-            <span className="text-gray-300">›</span>
-          </div>
-          <div
-            className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() =>
-              handleContactClick({ type: "ussd", value: "*885*3134#" })
-            }
-          >
-            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-purple-600">📱</span>
-            </div>
-            <div className="flex-grow min-w-0">
-              <p className="text-sm font-semibold text-gray-700">
-                USSD Repayment
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Dial *885*3134# from your phone
-              </p>
-            </div>
-            <span className="text-gray-300">›</span>
-          </div>
-          <div
-            className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() =>
-              handleContactClick({
-                type: "email",
-                value: "customer@cedilending.com",
-              })
-            }
-          >
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-amber-600">✉️</span>
-            </div>
-            <div className="flex-grow min-w-0">
-              <p className="text-sm font-semibold text-gray-700">
-                Email Support
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                customer@cedilending.com
-              </p>
-            </div>
-            <span className="text-gray-300">›</span>
-          </div>
+          {buildContactCards({ supportContact, contentContacts: contactInfo }).map(
+            (card, index) => (
+              <div
+                key={`${card.type}-${index}`}
+                className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors contact-card"
+                onClick={() =>
+                  handleContactClick({
+                    type: card.type,
+                    value: card.value,
+                    title: card.title,
+                  })
+                }
+              >
+                <div
+                  className={`w-10 h-10 rounded-xl ${card.iconBg} flex items-center justify-center flex-shrink-0`}
+                >
+                  <span className={card.iconColor}>{card.icon}</span>
+                </div>
+                <div className="flex-grow min-w-0">
+                  <p className="text-sm font-semibold text-gray-700">{card.title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {card.subtitle || card.value}
+                  </p>
+                </div>
+                <span className="text-gray-300">›</span>
+              </div>
+            ),
+          )}
         </div>
       </div>
     </div>

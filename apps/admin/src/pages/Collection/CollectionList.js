@@ -14,6 +14,7 @@ import {
   FiRotateCcw,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
+import { useAuth } from "../../contexts/AuthContext";
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8001/api";
 const authHeader = () => ({
@@ -162,9 +163,9 @@ function OfficerMultiSelect({ officers, selected, onChange }) {
 
 function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-[250px] z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div className="fixed top-0 right-0 bottom-0 left-0 md:left-64 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div
-        className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-2xl" : "max-w-xl"} flex flex-col max-h-[90vh]`}
+        className={`bg-white rounded-2xl shadow-2xl w-[92vw] ${wide ? "md:w-[72vw] lg:w-[62vw] max-w-2xl" : "md:w-[60vw] lg:w-[50vw] max-w-xl"} flex flex-col max-h-[90vh]`}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">{title}</h3>
@@ -200,7 +201,15 @@ function OverdueBadge({ days }) {
 }
 
 const CollectionList = () => {
-  const [activeTab, setActiveTab] = useState("pending-assignment");
+  const { user, isSuperAdmin } = useAuth();
+  const roleName = user?.role?.name || user?.Role?.name;
+  const isCollectionOfficer = roleName === "collection-officer";
+  const isLeadRole = ["super-admin", "admin", "local-manager", "collection-lead"].includes(roleName) || isSuperAdmin();
+
+  // Officers default to their assigned cases; leads see the full assignment queue
+  const [activeTab, setActiveTab] = useState(
+    isCollectionOfficer ? "assigned" : "pending-assignment",
+  );
   const [loans, setLoans] = useState([]);
   const [officers, setOfficers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -446,21 +455,27 @@ const CollectionList = () => {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — officers only see their own work queues; leads see full queue */}
       <div className="flex gap-1 mb-5 bg-white border border-gray-200 rounded-xl p-1 w-fit flex-wrap">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => {
-              setActiveTab(tab.key);
-              setPage(1);
-              setSelectedIds([]);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            <span>{tab.icon}</span> {tab.label}
-          </button>
-        ))}
+        {TABS
+          .filter((tab) =>
+            isCollectionOfficer
+              ? ["assigned", "processed", "hung-up", "completed"].includes(tab.key)
+              : true
+          )
+          .map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setPage(1);
+                setSelectedIds([]);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeTab === tab.key ? `${tab.color} border` : "text-gray-500 hover:bg-gray-50"}`}
+            >
+              <span>{tab.icon}</span> {tab.label}
+            </button>
+          ))}
       </div>
 
       {/* Search */}
@@ -536,13 +551,15 @@ const CollectionList = () => {
               </tr>
             ) : loans.length === 0 ? (
               <tr>
-                <td
-                  colSpan={7}
-                  className="px-4 py-16 text-center text-sm text-gray-400"
-                >
-                  No{" "}
-                  {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()}{" "}
-                  cases found.
+                <td colSpan={7} className="px-4 py-16 text-center">
+                  <p className="text-sm text-gray-400 mb-1">
+                    No {TABS.find((t) => t.key === activeTab)?.label.toLowerCase()} cases found.
+                  </p>
+                  {isCollectionOfficer && activeTab === "assigned" && (
+                    <p className="text-xs text-gray-300">
+                      Your collection lead will assign overdue cases to you. Check back soon.
+                    </p>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -592,7 +609,7 @@ const CollectionList = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 flex-wrap">
-                        {activeTab === "pending-assignment" && (
+                        {activeTab === "pending-assignment" && isLeadRole && (
                           <button
                             onClick={() => {
                               setAssignModal({ loanId: loan.id });
@@ -604,7 +621,7 @@ const CollectionList = () => {
                           </button>
                         )}
                         {(activeTab === "assigned" ||
-                          activeTab === "processed") && (
+                          activeTab === "processed") && isLeadRole && (
                           <>
                             <button
                               onClick={() => {

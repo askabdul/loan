@@ -9,6 +9,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 const TabContext = createContext();
 
+export { clearTabStorage };
+
 export const useTab = () => {
   const context = useContext(TabContext);
   if (!context) {
@@ -66,13 +68,40 @@ const getRouteTitle = (path) => {
 };
 
 const STORAGE_KEY = "cedi_admin_tabs";
+const EXCLUDED_TAB_PATHS = new Set(["/login", "/logout", "/register"]);
+
+const normalizePath = (path) => {
+  if (!path) return "";
+  return path.split("?")[0].split("#")[0].replace(/\/+$/, "");
+};
+
+const isTabEligiblePath = (path) => {
+  const normalized = normalizePath(path);
+  if (!normalized || normalized === "/") return false;
+  return !EXCLUDED_TAB_PATHS.has(normalized);
+};
+
+const clearTabStorage = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (_) {}
+};
 
 const loadFromStorage = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.tabs)) return parsed;
+      if (Array.isArray(parsed.tabs)) {
+        const tabs = parsed.tabs.filter(
+          (tab) => tab?.id !== "/" && isTabEligiblePath(tab?.path || tab?.id),
+        );
+        const activeTab =
+          parsed.activeTab === "/" || !isTabEligiblePath(parsed.activeTab)
+            ? null
+            : parsed.activeTab;
+        return { tabs, activeTab };
+      }
     }
   } catch (_) {}
   return { tabs: [], activeTab: null };
@@ -91,6 +120,16 @@ export const TabProvider = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // When a different user logs in, wipe the previous user's open tabs from state
+  useEffect(() => {
+    const handleSessionReset = () => {
+      setTabs([]);
+      setActiveTab(null);
+    };
+    window.addEventListener('admin:session-reset', handleSessionReset);
+    return () => window.removeEventListener('admin:session-reset', handleSessionReset);
+  }, []);
+
   // Persist whenever tabs or activeTab change
   useEffect(() => {
     saveToStorage(tabs, activeTab);
@@ -98,6 +137,8 @@ export const TabProvider = ({ children }) => {
 
   // Add or activate a tab
   const addTab = useCallback((path, title = null) => {
+    if (!isTabEligiblePath(path)) return;
+
     const tabTitle = title || getRouteTitle(path);
     const tabId = path;
 
@@ -216,16 +257,10 @@ export const TabProvider = ({ children }) => {
     [tabs, navigate],
   );
 
-  // Initialize home tab if no tabs exist
-  React.useEffect(() => {
-    if (tabs.length === 0) {
-      addTab("/", "Dashboard");
-    }
-  }, [tabs.length, addTab]);
-
   // Update active tab when location changes
   React.useEffect(() => {
     const currentPath = location.pathname;
+    if (!isTabEligiblePath(currentPath)) return;
     addTab(currentPath);
   }, [location.pathname, addTab]);
 

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../../contexts/ToastContext";
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:8001/api";
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 const WEAK_PINS = new Set([
   "0000",
@@ -186,6 +186,7 @@ const SetPin = () => {
           pin,
           firstName: personalInfo.firstName,
           lastName: personalInfo.lastName,
+          ...(personalInfo.email ? { email: personalInfo.email } : {}),
           dateOfBirth: personalInfo.dateOfBirth,
           gender: personalInfo.gender,
           address: {

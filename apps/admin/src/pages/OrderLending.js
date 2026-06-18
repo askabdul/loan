@@ -25,7 +25,6 @@ const formatDate = (d) =>
   d
     ? new Date(d).toLocaleDateString("en-GB", {
         day: "2-digit",
-        month: "short",
         year: "numeric",
       })
     : "—";
@@ -46,7 +45,7 @@ const OrderLending = () => {
   const [remarkDialog, setRemarkDialog] = useState(null); // { loanId }
   const [remark, setRemark] = useState("");
 
-  const canDisburse = hasActionPermission("updateLoanStatus") || isSuperAdmin;
+  const canDisburse = hasActionPermission("updateLoanStatus") || isSuperAdmin();
 
   const fetchLoans = useCallback(
     async (page = currentPage, search = searchTerm) => {
@@ -77,6 +76,14 @@ const OrderLending = () => {
 
   useEffect(() => {
     fetchLoans();
+  }, [fetchLoans]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchLoans();
+    }, 20000);
+
+    return () => clearInterval(intervalId);
   }, [fetchLoans]);
 
   // Debounce search
@@ -213,9 +220,7 @@ const OrderLending = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loans.map((loan) => {
-                  const hasRequest = (loan.adminNotes || []).some(
-                    (n) => n.type === "disbursement_request",
-                  );
+                  const gatewayState = loan.disbursementStatus || "idle";
                   return (
                     <tr
                       key={loan.id}
@@ -256,9 +261,17 @@ const OrderLending = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {hasRequest ? (
+                        {gatewayState === "failed" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-semibold border border-red-200">
+                            <FiCheckCircle size={10} /> Failed
+                          </span>
+                        ) : gatewayState === "processing" ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold border border-amber-200">
                             <FiCheckCircle size={10} /> Requested
+                          </span>
+                        ) : gatewayState === "sent" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
+                            <FiCheckCircle size={10} /> Sent
                           </span>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
@@ -329,12 +342,12 @@ const OrderLending = () => {
       {/* Disburse remark dialog */}
       {remarkDialog && (
         <div
-          className="fixed top-0 left-[250px] right-0 bottom-0 z-[1200] flex items-center justify-center p-4"
+          className="fixed top-0 left-0 md:left-64 right-0 bottom-0 z-[1200] flex items-center justify-center p-4"
           style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
           onClick={() => setRemarkDialog(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            className="bg-white rounded-2xl shadow-2xl w-[92vw] md:w-[60vw] lg:w-[50vw] max-w-xl p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-bold text-gray-800 mb-1">

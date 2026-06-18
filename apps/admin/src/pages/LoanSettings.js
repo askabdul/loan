@@ -122,7 +122,9 @@ const LoanSettings = () => {
     try {
       setLoading(true);
       const response = await apiService.getConfiguration();
-      const configData = response.data || [];
+      const configData = Array.isArray(response.data)
+        ? response.data
+        : Object.entries(response.config || {}).map(([key, value]) => ({ key, value }));
       
       // Transform config array to settings object
       const loanSettings = {
@@ -150,7 +152,7 @@ const LoanSettings = () => {
         else if (key === 'loan_terms_available') loanSettings.availableTerms = value;
         else if (key === 'require_collateral') loanSettings.requireCollateral = value;
         else if (key === 'min_credit_score') loanSettings.minCreditScore = value;
-        else if (key === 'max_credit_score') loanSettings.maxCreditScore = value;
+        else if (key === 'max_credit_score' || key === 'credit_score_range_max') loanSettings.maxCreditScore = value;
         else if (key === 'grace_period_days') loanSettings.gracePeriodDays = value;
         else if (key === 'late_fee_percentage') loanSettings.lateFeePercentage = value;
         else if (key === 'processing_fee_percentage') loanSettings.processingFeePercentage = value;
@@ -199,7 +201,7 @@ const LoanSettings = () => {
         availableTerms: 'loan_terms_available',
         requireCollateral: 'require_collateral',
         minCreditScore: 'min_credit_score',
-        maxCreditScore: 'max_credit_score',
+        maxCreditScore: 'credit_score_range_max',
         gracePeriodDays: 'grace_period_days',
         lateFeePercentage: 'late_fee_percentage',
         processingFeePercentage: 'processing_fee_percentage'
@@ -269,7 +271,9 @@ const LoanSettings = () => {
                 </div>
               ) : (
                 <span className="text-sm text-gray-700 font-medium">
-                  {config.type === 'number' ? currentValue?.toLocaleString() : currentValue}{config.unit && ` ${config.unit}`}
+                  {currentValue === undefined || currentValue === null || currentValue === ""
+                    ? 'Not set'
+                    : `${config.type === 'number' ? Number(currentValue).toLocaleString() : currentValue}${config.unit ? ` ${config.unit}` : ''}`}
                 </span>
               )}
             </div>

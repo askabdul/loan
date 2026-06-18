@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FiUsers,
   FiDollarSign,
@@ -90,15 +90,22 @@ const ActivityIcon = ({ type }) => {
 };
 
 const SimpleDashboard = () => {
-  const { user } = useAuth();
+  const { user, hasDataAccess, hasMenuAccess, hasSubMenuAccess } = useAuth();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [recentActivities, setRecentActivities] = useState([]);
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(60);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -106,6 +113,10 @@ const SimpleDashboard = () => {
       const data = response?.data || {};
       setDashboardData(data.stats || null);
       setRecentActivities(buildRecentActivities(data.recentActivity));
+      const nextInterval = Number(data?.meta?.dashboardRefreshIntervalSeconds);
+      if (Number.isFinite(nextInterval) && nextInterval >= 10) {
+        setRefreshIntervalSeconds(nextInterval);
+      }
       setLastUpdated(new Date());
     } catch (err) {
       setError("Failed to load dashboard data. Please try again.");
@@ -114,11 +125,21 @@ const SimpleDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardData]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) return;
+    const intervalMs = Math.max(10, Number(refreshIntervalSeconds || 60)) * 1000;
+    const intervalId = setInterval(() => {
+      fetchDashboardData();
+    }, intervalMs);
+    return () => clearInterval(intervalId);
+  }, [fetchDashboardData, refreshIntervalSeconds]);
 
   const getUserName = () => {
     if (user?.personalInfo?.firstName && user?.personalInfo?.lastName)
@@ -131,35 +152,47 @@ const SimpleDashboard = () => {
   const statCards = [
     {
       title: "Total Users",
-      value: dashboardData?.totalUsers?.toLocaleString() || "0",
+      value: hasDataAccess("viewAllUsers")
+        ? dashboardData?.totalUsers?.toLocaleString() || "0"
+        : "Restricted",
       icon: FiUsers,
       iconBg: "bg-blue-50",
       iconColor: "text-blue-600",
       valueCls: "text-blue-600",
+      visible: true,
     },
     {
       title: "Active Loans",
-      value: dashboardData?.activeLoans?.toLocaleString() || "0",
+      value: hasDataAccess("viewAllLoans")
+        ? dashboardData?.activeLoans?.toLocaleString() || "0"
+        : "Restricted",
       icon: FiCreditCard,
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-600",
       valueCls: "text-emerald-600",
+      visible: true,
     },
     {
       title: "Total Disbursed",
-      value: `₵${dashboardData?.totalDisbursed?.toLocaleString() || "0"}`,
+      value: hasDataAccess("viewFinancialData") || hasDataAccess("viewPayments")
+        ? `₵${dashboardData?.totalDisbursed?.toLocaleString() || "0"}`
+        : "Restricted",
       icon: FiDollarSign,
       iconBg: "bg-amber-50",
       iconColor: "text-amber-600",
       valueCls: "text-amber-600",
+      visible: true,
     },
     {
       title: "Collection Rate",
-      value: `${dashboardData?.repaymentRate || "0"}%`,
+      value: hasDataAccess("viewFinancialData") || hasDataAccess("viewPayments")
+        ? `${dashboardData?.repaymentRate || "0"}%`
+        : "Restricted",
       icon: FiTrendingUp,
       iconBg: "bg-purple-50",
       iconColor: "text-purple-600",
       valueCls: "text-purple-600",
+      visible: true,
     },
   ];
 
@@ -170,6 +203,9 @@ const SimpleDashboard = () => {
       icon: FiBarChart2,
       path: "/data-statistics/dashboard",
       color: "text-blue-600 bg-blue-50 hover:bg-blue-100",
+      visible:
+        hasMenuAccess("dataStatistics") &&
+        hasSubMenuAccess("dataStatistics", "dashboard"),
     },
     {
       label: "Manage Users",
@@ -177,6 +213,7 @@ const SimpleDashboard = () => {
       icon: FiUsers,
       path: "/user/list",
       color: "text-emerald-600 bg-emerald-50 hover:bg-emerald-100",
+      visible: hasMenuAccess("user") && hasSubMenuAccess("user", "listOfUsers"),
     },
     {
       label: "View Loans",
@@ -184,6 +221,8 @@ const SimpleDashboard = () => {
       icon: FiCreditCard,
       path: "/credit-review/list",
       color: "text-amber-600 bg-amber-50 hover:bg-amber-100",
+      visible:
+        hasMenuAccess("creditReview") && hasSubMenuAccess("creditReview", "list"),
     },
     {
       label: "Payment Management",
@@ -191,6 +230,9 @@ const SimpleDashboard = () => {
       icon: FiDollarSign,
       path: "/fund-management/payments",
       color: "text-purple-600 bg-purple-50 hover:bg-purple-100",
+      visible:
+        hasMenuAccess("fundManagement") &&
+        hasSubMenuAccess("fundManagement", "paymentManagement"),
     },
   ];
 
@@ -238,7 +280,7 @@ const SimpleDashboard = () => {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {statCards.map((s, i) => (
+        {statCards.filter((s) => s.visible).map((s, i) => (
           <div
             key={i}
             className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-3"
@@ -274,7 +316,7 @@ const SimpleDashboard = () => {
             <FiActivity size={16} className="text-gray-400" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {quickActions.map((a, i) => (
+            {quickActions.filter((a) => a.visible).map((a, i) => (
               <button
                 key={i}
                 onClick={() => navigate(a.path)}
@@ -306,12 +348,15 @@ const SimpleDashboard = () => {
             <h2 className="text-base font-bold text-gray-800 m-0">
               Recent Activity
             </h2>
-            <button
-              onClick={() => navigate("/data-statistics/dashboard")}
-              className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1"
-            >
-              View all <FiArrowRight size={11} />
-            </button>
+            {hasMenuAccess("dataStatistics") &&
+              hasSubMenuAccess("dataStatistics", "dashboard") && (
+                <button
+                  onClick={() => navigate("/data-statistics/dashboard")}
+                  className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1"
+                >
+                  View all <FiArrowRight size={11} />
+                </button>
+              )}
           </div>
           {loading ? (
             <div className="space-y-3">

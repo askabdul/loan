@@ -2,11 +2,12 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { Op, fn, col, literal } = require("sequelize");
 const { sequelize } = require("../config/database");
-const { Loan, User, LoanLevel, Payment, Notification } = require("../models");
+const { Loan, User, LoanLevel, Payment, Notification, AppConfig } = require("../models");
 const { auth, adminAuth } = require("../middleware/auth");
 const kycCheck = require("../middleware/kycCheck");
 const performanceTrackingService = require("../services/performanceTrackingService");
 const { checkAndPromoteLevel } = require("../services/levelProgressionService");
+const { getLoanLifecycleSettings, calculateOverdueDays } = require("../services/loanLifecycleSettings");
 
 const router = express.Router();
 
@@ -109,6 +110,36 @@ const loanUserInclude = {
   required: false,
 };
 
+const calculateCalendarDueDate = (activationDate, termInDays) => {
+  const due = new Date(activationDate);
+  due.setHours(0, 0, 0, 0);
+  due.setDate(due.getDate() + Number(termInDays || 0));
+  return due;
+};
+
+const buildDisbursementActivationUpdates = ({ loan, now, activateLoan }) => {
+  const updates = {
+    disbursementDate: now,
+    disbursementStatus: "sent",
+    disbursementFailedAt: null,
+    disbursementFailureReason: null,
+    disbursementLastAttemptAt: now,
+    disbursementAttempts: (loan.disbursementAttempts || 0) + 1,
+    dueDate: calculateCalendarDueDate(now, loan.termInDays || 7),
+    // remainingBalance = totalAmount - upfrontFee  (e.g. 145 - 20 = 125 for GHS 100 loan)
+    remainingBalance: parseFloat(loan.totalAmount || 0) - parseFloat(loan.upfrontFee || 0),
+  };
+
+  if (activateLoan) {
+    updates.status = "active";
+    updates.activationConfirmedAt = now;
+  } else {
+    updates.status = "disbursed";
+  }
+
+  return updates;
+};
+
 // GET /api/loans/active-check
 // Returns whether the authenticated user has an active loan and its details.
 // Used by cedLoan to guard the Apply button and loan application route.
@@ -158,7 +189,7 @@ router.post(
   auth,
   kycCheck,
   [
-    body("amount").isNumeric().isFloat({ min: 100, max: 50000 }),
+    body("amount").isNumeric().isFloat({ min: 1, max: 50000 }),
     body("purpose").isIn([
       "business",
       "education",
@@ -260,6 +291,7 @@ router.post(
         }
       }
 
+      // Copy fee rates from the level so _calculateAmounts uses the right values
       const loan = await Loan.create({
         userId: req.user.id,
         amount,
@@ -271,6 +303,14 @@ router.post(
         isAutoApproved,
         status: initialStatus,
         approvalDate: isAutoApproved ? new Date() : null,
+        // Fee rates from the loan level (flat % of principal)
+        interestRate:         parseFloat(currentLevel.interestRate)         || 9,
+        serviceFeePct:        parseFloat(currentLevel.serviceFeePct)        || 12,
+        administrationFeePct: parseFloat(currentLevel.administrationFeePct) || 12,
+        commitmentFeePct:     parseFloat(currentLevel.commitmentFeePct)     || 12,
+        // upfrontDeductionPct: % of principal withheld at disbursement (e.g. 20%)
+        upfrontDeductionPct: await AppConfig.getConfig('upfront_deduction_pct').then(r => r ? Number(r.value) : 20).catch(() => 20),
+        overdueFeePct: await AppConfig.getConfig('overdue_fee_daily_pct').then(r => r ? Number(r.value) : 2).catch(() => 2),
       });
 
       const io = req.app.get("io");
@@ -323,9 +363,39 @@ router.get("/my-loans", auth, async (req, res) => {
       limit: limitNum,
       offset: (pageNum - 1) * limitNum,
     });
+
+    // Enrich overdue loans with fresh calculations so the frontend never shows
+    // stale overdueDays/totalOverdueFee regardless of when the hourly job ran.
+    const hasOverdue = loans.some((l) => l.status === "overdue");
+    let settings = null;
+    if (hasOverdue) {
+      settings = await getLoanLifecycleSettings();
+    }
+    const now = new Date();
+
+    const enrichedLoans = loans.map((loan) => {
+      const obj = loan.toJSON();
+      if (obj.status === "overdue" && settings) {
+        const freshDays = calculateOverdueDays({
+          dueDate: obj.dueDate,
+          now,
+          mode: settings.overdueDayCountMode,
+        });
+        const dailyRate = (parseFloat(obj.overdueFeePct) || 2) / 100;
+        const freshFee =
+          Math.round(
+            parseFloat(obj.remainingBalance || 0) * dailyRate * freshDays * 100,
+          ) / 100;
+        obj.overdueDays = freshDays;
+        obj.overdueAmount = freshFee;
+        obj.totalOverdueFee = freshFee;
+      }
+      return obj;
+    });
+
     res.json({
       success: true,
-      loans,
+      loans: enrichedLoans,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -390,7 +460,7 @@ router.get("/calculate/:amount/:duration", auth, async (req, res) => {
     if (
       !amount ||
       !duration ||
-      amount < 100 ||
+      amount < 1 ||
       amount > 50000 ||
       duration < 1 ||
       duration > 24
@@ -473,124 +543,6 @@ router.put("/:id/cancel", auth, async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Server error cancelling loan" });
-  }
-});
-
-// POST /api/loans/:id/request-disbursement  (customer requests disbursement of approved loan)
-router.post("/:id/request-disbursement", auth, async (req, res) => {
-  try {
-    const loan = await Loan.findOne({
-      where: {
-        id: req.params.id,
-        userId: req.user.id,
-        status: "approved",
-      },
-    });
-    if (!loan)
-      return res.status(404).json({
-        success: false,
-        message: "Loan not found or not in approved status",
-      });
-
-    // Prevent duplicate disbursement requests
-    const alreadyRequested = (loan.adminNotes || []).some(
-      (n) => n.type === "disbursement_request",
-    );
-    if (alreadyRequested) {
-      return res.json({
-        success: true,
-        alreadyRequested: true,
-        message:
-          "Disbursement request was already submitted. Awaiting admin processing.",
-      });
-    }
-
-    // Mark with a disbursementRequestedAt note in adminNotes
-    const notes = [...(loan.adminNotes || [])];
-    notes.push({
-      note: "Customer requested disbursement",
-      addedAt: new Date(),
-      type: "disbursement_request",
-    });
-    await loan.update({ adminNotes: notes });
-
-    // Notify admins via socket — emit to "loan_updates" which all authenticated admins join automatically
-    const io = req.app.get("io");
-    if (io) {
-      io.to("loan_updates").emit("disbursement-requested", {
-        loanId: loan.id,
-        loanRef: loan.loanId,
-        userId: loan.userId,
-        amount: loan.amount,
-        requestedAt: new Date(),
-      });
-    }
-
-    res.json({
-      success: true,
-      message:
-        "Disbursement request submitted. The admin will process it shortly.",
-    });
-  } catch (err) {
-    console.error("Error requesting disbursement:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
-
-// POST /api/loans/:id/confirm-receipt  (customer confirms they received disbursed funds)
-router.post("/:id/confirm-receipt", auth, async (req, res) => {
-  try {
-    const loan = await Loan.findOne({
-      where: {
-        id: req.params.id,
-        userId: req.user.id,
-        status: "disbursed",
-      },
-    });
-    if (!loan)
-      return res.status(404).json({
-        success: false,
-        message: "Loan not found or not in disbursed status",
-      });
-
-    // Prevent duplicate confirmations
-    const alreadyConfirmed = (loan.adminNotes || []).some(
-      (n) => n.type === "receipt_confirmed",
-    );
-    if (alreadyConfirmed) {
-      return res.json({
-        success: true,
-        alreadyConfirmed: true,
-        message: "You have already confirmed receipt of this loan.",
-      });
-    }
-
-    const notes = [...(loan.adminNotes || [])];
-    notes.push({
-      note: "Customer confirmed receipt of disbursed funds",
-      addedAt: new Date(),
-      type: "receipt_confirmed",
-    });
-    await loan.update({ adminNotes: notes });
-
-    // Notify admins via socket so they know they can activate the loan
-    const io = req.app.get("io");
-    if (io) {
-      io.to("loan_updates").emit("receipt-confirmed", {
-        loanId: loan.id,
-        loanRef: loan.loanId,
-        userId: loan.userId,
-        confirmedAt: new Date(),
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Receipt confirmed. The admin will now activate your loan.",
-    });
-  } catch (err) {
-    console.error("Error confirming receipt:", err);
-    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -811,7 +763,7 @@ router.put(
       if (!errors.isEmpty())
         return res.status(400).json({ success: false, errors: errors.array() });
 
-      const { status, rejectionReason, adminNotes } = req.body;
+      const { status: requestedStatus, rejectionReason, adminNotes } = req.body;
       const loan = await Loan.findByPk(req.params.id, {
         include: [loanUserInclude],
       });
@@ -820,8 +772,18 @@ router.put(
           .status(404)
           .json({ success: false, message: "Loan not found" });
 
-      const updates = { status };
-      if (status === "rejected" && rejectionReason)
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
+      const shouldAutoDisburse =
+        requestedStatus === "approved" &&
+        loanLifecycleSettings.autoDisburseOnApproval;
+      const finalStatus = shouldAutoDisburse
+        ? loanLifecycleSettings.activateLoanOnDisbursement
+          ? "active"
+          : "disbursed"
+        : requestedStatus;
+
+      const updates = { status: finalStatus };
+      if (requestedStatus === "rejected" && rejectionReason)
         updates.rejectionReason = rejectionReason;
       if (adminNotes) {
         const notes = [...(loan.adminNotes || [])];
@@ -832,57 +794,71 @@ router.put(
         });
         updates.adminNotes = notes;
       }
-      if (status === "approved") {
+
+      if (requestedStatus === "approved") {
         updates.approvalDate = new Date();
         updates.reviewedById = req.admin.id;
-        // Seed remainingBalance when loan is first approved so it is visible
-        // on the customer app before disbursement
-        if (!parseFloat(loan.remainingBalance)) {
-          updates.remainingBalance = parseFloat(loan.totalAmount);
+        updates.reviewDate = new Date();
+
+        if (shouldAutoDisburse) {
+          const autoDisbursementUpdates = buildDisbursementActivationUpdates({
+            loan,
+            now: new Date(),
+            activateLoan: loanLifecycleSettings.activateLoanOnDisbursement,
+          });
+          Object.assign(updates, autoDisbursementUpdates);
+
+          const notes = [...(updates.adminNotes || loan.adminNotes || [])];
+          notes.push({
+            note: loanLifecycleSettings.activateLoanOnDisbursement
+              ? "Loan approved and auto-disbursed. Repayment clock started immediately."
+              : "Loan approved and auto-disbursed.",
+            addedBy: req.admin.id,
+            addedAt: new Date(),
+            type: "auto_disbursement_on_approval",
+          });
+          updates.adminNotes = notes;
+        } else if (!parseFloat(loan.remainingBalance)) {
+          updates.remainingBalance = parseFloat(loan.totalAmount || 0) - parseFloat(loan.upfrontFee || 0);
         }
-      } else if (status === "disbursed") {
-        updates.disbursementDate = new Date();
-        // Set remaining balance and due date on disbursement so the customer
-        // repayment screen shows accurate data immediately
-        if (!parseFloat(loan.remainingBalance)) {
-          updates.remainingBalance = parseFloat(loan.totalAmount);
+      } else if (requestedStatus === "disbursed") {
+        const disbursementUpdates = buildDisbursementActivationUpdates({
+          loan,
+          now: new Date(),
+          activateLoan: false,
+        });
+        Object.assign(updates, disbursementUpdates);
+      } else if (requestedStatus === "active") {
+        const activationUpdates = buildDisbursementActivationUpdates({
+          loan,
+          now: new Date(),
+          activateLoan: true,
+        });
+        Object.assign(updates, activationUpdates);
+      } else if (!parseFloat(loan.remainingBalance) && finalStatus === "approved") {
+        updates.remainingBalance = parseFloat(loan.totalAmount || loan.amount || 0);
         }
-        if (!loan.dueDate) {
-          updates.dueDate = new Date(
-            Date.now() + (loan.termInDays || 30) * 24 * 60 * 60 * 1000,
-          );
-        }
-      } else if (status === "active") {
-        // Repayment clock starts: ensure dueDate and remainingBalance are set
-        if (!loan.disbursementDate) updates.disbursementDate = new Date();
-        updates.dueDate = new Date(
-          Date.now() + (loan.termInDays || 30) * 24 * 60 * 60 * 1000,
-        );
-        if (!parseFloat(loan.remainingBalance)) {
-          updates.remainingBalance = parseFloat(loan.totalAmount);
-        }
-      }
 
       await loan.update(updates);
       const io = req.app.get("io");
       if (io && loan.userId)
         io.to(`user-${loan.userId}`).emit("loan-status-changed", {
           loanId: loan.id,
-          status,
-          message: `Your loan application status has been updated to: ${status}`,
+          status: finalStatus,
+          message: `Your loan application status has been updated to: ${finalStatus}`,
         });
 
       // Persist notification so user sees it in notification bell even when offline
       await createLoanNotification(
         loan.userId,
         loan,
-        status,
+        finalStatus,
         rejectionReason || adminNotes,
       );
 
       res.json({
         success: true,
-        message: `Loan status updated to ${status}`,
+        message: `Loan status updated to ${finalStatus}`,
         loan,
       });
     } catch (err) {
@@ -919,43 +895,79 @@ router.put(
       if (!errors.isEmpty())
         return res.status(400).json({ success: false, errors: errors.array() });
 
-      const { status, assignmentStatus, remarks } = req.body;
+      const { status: requestedStatus, assignmentStatus, remarks } = req.body;
       const loan = await Loan.findByPk(req.params.id);
       if (!loan)
         return res
           .status(404)
           .json({ success: false, message: "Loan not found" });
 
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
+      const shouldAutoDisburse =
+        requestedStatus === "approved" &&
+        loanLifecycleSettings.autoDisburseOnApproval;
+      const finalStatus = shouldAutoDisburse
+        ? loanLifecycleSettings.activateLoanOnDisbursement
+          ? "active"
+          : "disbursed"
+        : requestedStatus;
+
       const validTransitions = {
         pending: ["under-review", "approved", "rejected", "cancelled"],
         "under-review": ["approved", "rejected", "cancelled"],
-        approved: ["active", "cancelled"],
+        approved: ["active", "disbursed", "cancelled"],
         active: ["completed", "overdue", "cancelled"],
         overdue: ["completed", "active", "cancelled"],
         rejected: ["under-review"],
         completed: [],
         cancelled: [],
       };
-      if (!validTransitions[loan.status]?.includes(status))
+      if (!validTransitions[loan.status]?.includes(requestedStatus))
         return res.status(400).json({
           success: false,
-          message: `Invalid status transition from ${loan.status} to ${status}`,
+          message: `Invalid status transition from ${loan.status} to ${requestedStatus}`,
         });
 
-      const updates = { status };
+      const updates = { status: finalStatus };
       if (assignmentStatus) updates.assignmentStatus = assignmentStatus;
-      if (status === "approved") {
+
+      if (requestedStatus === "approved") {
         updates.approvalDate = new Date();
         updates.reviewedById = req.admin.id;
         updates.reviewDate = new Date();
+
+        if (shouldAutoDisburse) {
+          Object.assign(
+            updates,
+            buildDisbursementActivationUpdates({
+              loan,
+              now: new Date(),
+              activateLoan: loanLifecycleSettings.activateLoanOnDisbursement,
+            }),
+          );
+        }
       }
-      if (status === "active") {
-        updates.disbursementDate = new Date();
-        updates.dueDate = new Date(
-          Date.now() + loan.termInDays * 24 * 60 * 60 * 1000,
+      if (requestedStatus === "disbursed") {
+        Object.assign(
+          updates,
+          buildDisbursementActivationUpdates({
+            loan,
+            now: new Date(),
+            activateLoan: false,
+          }),
         );
       }
-      if (status === "completed") updates.completionDate = new Date();
+      if (requestedStatus === "active") {
+        Object.assign(
+          updates,
+          buildDisbursementActivationUpdates({
+            loan,
+            now: new Date(),
+            activateLoan: true,
+          }),
+        );
+      }
+      if (requestedStatus === "completed") updates.completionDate = new Date();
       if (remarks) {
         const notes = [...(loan.adminNotes || [])];
         notes.push({
@@ -971,11 +983,11 @@ router.put(
       if (io && loan.userId)
         io.to(`user-${loan.userId}`).emit("loan-status-changed", {
           loanId: loan.id,
-          status,
-          message: `Your loan status has been updated to: ${status}`,
+          status: finalStatus,
+          message: `Your loan status has been updated to: ${finalStatus}`,
         });
 
-      await createLoanNotification(loan.userId, loan, status, remarks);
+      await createLoanNotification(loan.userId, loan, finalStatus, remarks);
 
       res.json({
         success: true,
@@ -1209,6 +1221,130 @@ router.put(
   },
 );
 
+// POST /api/loans/bridge-disbursement-webhook (public — called by Bridge AGW)
+// Processes Bridge MTC (payout) callbacks. Bridge identifies the loan via the
+// transaction_id we stored in loan.disbursementReference.
+router.post("/bridge-disbursement-webhook", async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    // Bridge sends response_code in callbacks (same as the initiate response)
+    const transactionId =
+      payload.transaction_id || payload.transactionId;
+    const responseCode = String(
+      payload.response_code || payload.status || "",
+    );
+    const responseMessage =
+      payload.response_message ||
+      payload.status_desc ||
+      payload.message ||
+      "Bridge disbursement callback";
+
+    if (!transactionId) {
+      return res
+        .status(200)
+        .json({ success: true, message: "Missing transaction_id — ignored" });
+    }
+
+    // Match the loan using the transaction_id we stored at disbursement initiation
+    const loan = await Loan.findOne({
+      where: { disbursementReference: transactionId, status: "approved" },
+      include: [loanUserInclude],
+    });
+    if (!loan) {
+      // Already processed or not found — acknowledge so Bridge doesn't retry
+      return res
+        .status(200)
+        .json({ success: true, message: "Loan not found or already processed" });
+    }
+
+    const now = new Date();
+    const adminNotes = [...(loan.adminNotes || [])];
+
+    if (responseCode === "000") {
+      // Successful disbursement — activate loan
+      adminNotes.push({
+        note: `Bridge MTC disbursement confirmed (code ${responseCode}): ${responseMessage}`,
+        addedAt: now,
+        type: "bridge_disbursement_confirmed",
+      });
+
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
+      const disbursementUpdates = buildDisbursementActivationUpdates({
+        loan,
+        now,
+        activateLoan: loanLifecycleSettings.activateLoanOnDisbursement,
+      });
+
+      await loan.update({
+        ...disbursementUpdates,
+        disbursementStatus: "sent",
+        adminNotes,
+        disbursementGatewayResponse: {
+          transactionId,
+          responseCode,
+          responseMessage,
+          receivedAt: now.toISOString(),
+          rawPayload: payload,
+        },
+      });
+
+      const finalStatus = loanLifecycleSettings.activateLoanOnDisbursement
+        ? "active"
+        : "disbursed";
+      const io = req.app.get("io");
+      if (io && loan.userId) {
+        io.to(`user-${loan.userId}`).emit("loan-status-changed", {
+          loanId: loan.id,
+          status: finalStatus,
+          message:
+            "Your loan has been disbursed to your mobile money account. Repayment countdown has started.",
+        });
+      }
+      await createLoanNotification(loan.userId, loan, finalStatus);
+    } else if (["001", "003"].includes(responseCode)) {
+      // Failed or cancelled
+      adminNotes.push({
+        note: `Bridge MTC disbursement failed (code ${responseCode}): ${responseMessage}`,
+        addedAt: now,
+        type: "bridge_disbursement_failed",
+      });
+      await loan.update({
+        disbursementStatus: "failed",
+        disbursementFailureReason: responseMessage,
+        disbursementFailedAt: now,
+        adminNotes,
+        disbursementGatewayResponse: {
+          transactionId,
+          responseCode,
+          responseMessage,
+          receivedAt: now.toISOString(),
+          rawPayload: payload,
+        },
+      });
+    } else {
+      // Pending (002) or unknown — record and wait
+      await loan.update({
+        disbursementGatewayResponse: {
+          transactionId,
+          responseCode,
+          responseMessage,
+          receivedAt: now.toISOString(),
+          rawPayload: payload,
+        },
+      });
+    }
+
+    return res.status(200).json({ success: true, message: "Webhook processed" });
+  } catch (error) {
+    console.error("Bridge disbursement webhook error:", error);
+    // Always return 200 so Bridge doesn't retry indefinitely
+    return res
+      .status(200)
+      .json({ success: true, message: "Webhook received with error" });
+  }
+});
+
 // GET /api/loans/failed-disbursements (admin)
 // Returns approved loans that have a disbursement failure flag or are awaiting disbursement.
 router.get("/failed-disbursements", adminAuth, async (req, res) => {
@@ -1245,6 +1381,111 @@ router.get("/failed-disbursements", adminAuth, async (req, res) => {
   }
 });
 
+// POST /api/loans/:id/disbursement-callback (admin/system)
+// Records gateway callback outcome. Success moves loan to disbursed; failure keeps it approved.
+router.post(
+  "/:id/disbursement-callback",
+  adminAuth,
+  [
+    body("status").isIn(["success", "failed"]),
+    body("reference").optional().isString(),
+    body("reason").optional().isString(),
+    body("channel").optional().isIn(["momo", "bank", "cash", "manual"]),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty())
+        return res.status(400).json({ success: false, errors: errors.array() });
+
+      const loan = await Loan.findByPk(req.params.id, {
+        include: [loanUserInclude],
+      });
+      if (!loan || loan.status !== "approved") {
+        return res.status(404).json({
+          success: false,
+          message: "Loan not found or not awaiting disbursement",
+        });
+      }
+
+      const { status, reference, reason, channel } = req.body;
+      const now = new Date();
+      const adminNotes = [...(loan.adminNotes || [])];
+
+      if (status === "success") {
+        adminNotes.push({
+          note: `Disbursement callback success${reference ? `, ref=${reference}` : ""}`,
+          addedBy: req.admin.id,
+          addedAt: now,
+          type: "disbursement_callback_success",
+        });
+
+        const loanLifecycleSettings = await getLoanLifecycleSettings();
+        const disbursementUpdates = buildDisbursementActivationUpdates({
+          loan,
+          now,
+          activateLoan: loanLifecycleSettings.activateLoanOnDisbursement,
+        });
+
+        await loan.update({
+          ...disbursementUpdates,
+          disbursementReference: reference || loan.disbursementReference || null,
+          disbursementChannel: channel || loan.disbursementChannel || null,
+          adminNotes,
+        });
+
+        const callbackStatus = loanLifecycleSettings.activateLoanOnDisbursement
+          ? "active"
+          : "disbursed";
+
+        const io = req.app.get("io");
+        if (io && loan.userId)
+          io.to(`user-${loan.userId}`).emit("loan-status-changed", {
+            loanId: loan.id,
+            status: callbackStatus,
+            message: loanLifecycleSettings.activateLoanOnDisbursement
+              ? "Your loan has been disbursed and is now active. Repayment tracking has started."
+              : "Your loan has been disbursed successfully.",
+          });
+
+        await createLoanNotification(loan.userId, loan, callbackStatus);
+
+        return res.json({
+          success: true,
+          message: "Disbursement callback processed successfully",
+          loan,
+        });
+      }
+
+      adminNotes.push({
+        note: `Disbursement callback failed${reason ? `: ${reason}` : ""}`,
+        addedBy: req.admin.id,
+        addedAt: now,
+        type: "disbursement_callback_failed",
+      });
+
+      await loan.update({
+        status: "approved",
+        disbursementStatus: "failed",
+        disbursementFailureReason: reason || "Gateway reported failure",
+        disbursementFailedAt: now,
+        disbursementLastAttemptAt: now,
+        disbursementAttempts: (loan.disbursementAttempts || 0) + 1,
+        adminNotes,
+      });
+
+      return res.json({
+        success: true,
+        message: "Disbursement failure recorded; loan remains in retry queue",
+        loan,
+      });
+    } catch (err) {
+      console.error("Disbursement callback error:", err);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  },
+);
+
 // POST /api/loans/:id/disburse/retry (admin) — retry or manually record disbursement
 router.post(
   "/:id/disburse/retry",
@@ -1271,6 +1512,7 @@ router.post(
         });
 
       const { channel, reference, disbursedAmount, notes } = req.body;
+      const loanLifecycleSettings = await getLoanLifecycleSettings();
       const adminNotes = [...(loan.adminNotes || [])];
       adminNotes.push({
         note: `Manual disbursement: channel=${channel}, ref=${reference}${notes ? ", " + notes : ""}`,
@@ -1279,35 +1521,42 @@ router.post(
         type: "manual_disbursement",
       });
 
+      const disbursementUpdates = buildDisbursementActivationUpdates({
+        loan,
+        now: new Date(),
+        activateLoan: loanLifecycleSettings.activateLoanOnDisbursement,
+      });
+
+      if (disbursedAmount) {
+        disbursementUpdates.remainingBalance = parseFloat(disbursedAmount);
+      }
+
       await loan.update({
-        status: "active",
-        disbursementDate: new Date(),
+        ...disbursementUpdates,
         disbursementChannel: channel,
         disbursementReference: reference,
-        disbursementFailedAt: null,
-        disbursementFailureReason: null,
-        remainingBalance: disbursedAmount
-          ? parseFloat(disbursedAmount)
-          : parseFloat(loan.totalAmount),
-        dueDate: new Date(
-          Date.now() + (loan.termInDays || 30) * 24 * 60 * 60 * 1000,
-        ),
         adminNotes,
       });
+
+      const retryStatus = loanLifecycleSettings.activateLoanOnDisbursement
+        ? "active"
+        : "disbursed";
 
       const io = req.app.get("io");
       if (io && loan.userId)
         io.to(`user-${loan.userId}`).emit("loan-status-changed", {
           loanId: loan.id,
-          status: "active",
-          message: `Your loan of GHS ${parseFloat(loan.amount).toLocaleString()} has been disbursed and is now active.`,
+          status: retryStatus,
+          message: loanLifecycleSettings.activateLoanOnDisbursement
+            ? `Your loan of GHS ${parseFloat(loan.amount).toLocaleString()} has been disbursed and activated.`
+            : `Your loan of GHS ${parseFloat(loan.amount).toLocaleString()} has been disbursed.`,
         });
 
-      await createLoanNotification(loan.userId, loan, "active");
+      await createLoanNotification(loan.userId, loan, retryStatus);
 
       res.json({
         success: true,
-        message: "Loan disbursed and activated successfully",
+        message: "Loan disbursed successfully",
         loan,
       });
     } catch (err) {

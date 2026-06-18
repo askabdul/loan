@@ -151,52 +151,25 @@ const IdVerification = () => {
         return;
       }
 
-      // Prepare complete registration data
       const registrationData = {
-        phoneNumber: phoneNumber,
-        pin: pin,
-        personalInfo: {
-          firstName: personalInfo.firstName,
-          lastName: personalInfo.lastName,
-          email: personalInfo.email,
-          dateOfBirth: personalInfo.dateOfBirth,
-          gender: personalInfo.gender,
-          maritalStatus: personalInfo.maritalStatus,
-          address: personalInfo.address,
+        phoneNumber,
+        pin,
+        firstName: personalInfo.firstName,
+        lastName: personalInfo.lastName,
+        dateOfBirth: personalInfo.dateOfBirth,
+        gender: personalInfo.gender,
+        address: {
+          street: personalInfo.address,
           city: personalInfo.city,
-          state: personalInfo.state,
-          postalCode: personalInfo.postalCode,
+          region: personalInfo.state,
+          country: "Ghana",
         },
-        workInfo: {
-          employmentStatus: workInfo.employmentStatus,
-          employer: workInfo.employer,
-          jobTitle: workInfo.jobTitle,
-          monthlyIncome: workInfo.monthlyIncome,
-          workAddress: workInfo.workAddress,
-          yearsOfEmployment: workInfo.yearsOfEmployment,
-        },
-        educationInfo: {
-          highestLevel: educationInfo.highestEducation,
-          institution: educationInfo.institutionName,
-          fieldOfStudy: educationInfo.fieldOfStudy,
-          graduationYear: educationInfo.graduationYear,
-        },
-        emergencyContacts: emergencyContacts.map((contact) => ({
-          name: contact.name,
-          relationship: contact.relationship,
-          phoneNumber: contact.phone,
-          email: contact.email,
-        })),
-        idVerification: {
-          idType: documents.idType,
-          idNumber: documents.idNumber,
-          isVerified: false,
-        },
+        email: personalInfo.email,
       };
 
       // Submit complete registration to backend
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/auth/register-phone`,
+        `${process.env.REACT_APP_API_URL}/auth/register/complete`,
         {
           method: "POST",
           headers: {

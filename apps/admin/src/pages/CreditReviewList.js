@@ -49,6 +49,11 @@ const StatusBadge = ({ status }) => (
 
 const CreditReviewList = () => {
   const { hasActionPermission, hasDataAccess, user, isSuperAdmin } = useAuth();
+  const roleName = user?.role?.name || user?.Role?.name;
+  const isReviewOfficer = roleName === "review-officer";
+  const canAssignLoans = hasActionPermission("assignLoan") || isSuperAdmin();
+  const canUpdateLoanStatus =
+    hasActionPermission("updateLoanStatus") || isSuperAdmin();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -66,9 +71,10 @@ const CreditReviewList = () => {
   const [pagination, setPagination] = useState({ total: 0, pages: 0 });
   const [error, setError] = useState(null);
 
-  // Persist active tab across refreshes
+  // Officers default to "assigned" (their own cases); leads/admins see all including pending
+  const defaultTab = isReviewOfficer ? "assigned" : "pending-assign";
   const [activeTab, setActiveTab] = useState(
-    () => localStorage.getItem("creditReview_activeTab") || "pending-assign",
+    () => localStorage.getItem("creditReview_activeTab") || defaultTab,
   );
   const [selectedLoans, setSelectedLoans] = useState([]);
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -80,9 +86,10 @@ const CreditReviewList = () => {
     setSelectedLoans([]);
   };
 
-  // Tab configurations
+  // Tab configurations — officers only see their own case tabs
   const tabs = [
-    { id: "pending-assign", label: "Pending Assign", icon: FiClock },
+    // Pending-Assign: unassigned loans — only visible to leads/admins who can assign
+    ...(!isReviewOfficer ? [{ id: "pending-assign", label: "Pending Assign", icon: FiClock }] : []),
     { id: "assigned", label: "Assigned", icon: FiUsers },
     { id: "hanged-up", label: "Hanged Up", icon: FiX },
     { id: "approved", label: "Approved", icon: FiDollarSign },
@@ -349,6 +356,10 @@ const CreditReviewList = () => {
   };
 
   const handleAssignLoans = () => {
+    if (!canAssignLoans) {
+      alert("You do not have permission to assign loans.");
+      return;
+    }
     if (selectedLoans.length === 0) {
       alert("Please select at least one loan to assign.");
       return;
@@ -566,7 +577,9 @@ const CreditReviewList = () => {
         )}
 
         {/* Assign selected */}
-        {activeTab === "pending-assign" && selectedLoans.length > 0 && (
+        {activeTab === "pending-assign" &&
+          selectedLoans.length > 0 &&
+          canAssignLoans && (
           <button
             onClick={handleAssignLoans}
             disabled={loading}
@@ -838,45 +851,53 @@ const CreditReviewList = () => {
                       <div className="flex items-center justify-center gap-2">
                         {activeTab === "assigned" ? (
                           <>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReassignLoan(app.id);
-                              }}
-                            >
-                              Reassign
-                            </button>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleWithdrawLoan(app.id);
-                              }}
-                            >
-                              Withdraw
-                            </button>
+                            {canAssignLoans && (
+                              <>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReassignLoan(app.id);
+                                  }}
+                                >
+                                  Reassign
+                                </button>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleWithdrawLoan(app.id);
+                                  }}
+                                >
+                                  Withdraw
+                                </button>
+                              </>
+                            )}
                           </>
                         ) : activeTab === "hanged-up" ? (
                           <>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRetryContact(app.id);
-                              }}
-                            >
-                              Retry Contact
-                            </button>
-                            <button
-                              className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleReassignLoan(app.id);
-                              }}
-                            >
-                              Reassign
-                            </button>
+                            {canAssignLoans && (
+                              <>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRetryContact(app.id);
+                                  }}
+                                >
+                                  Retry Contact
+                                </button>
+                                <button
+                                  className="px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 rounded-md transition"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReassignLoan(app.id);
+                                  }}
+                                >
+                                  Reassign
+                                </button>
+                              </>
+                            )}
                           </>
                         ) : (
                           <button
@@ -912,10 +933,15 @@ const CreditReviewList = () => {
           </div>
 
           {applications.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-gray-100">
+            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-gray-100 gap-1">
               <p className="text-gray-400 text-sm">
                 No loan applications found matching your criteria.
               </p>
+              {isReviewOfficer && activeTab === "assigned" && (
+                <p className="text-xs text-gray-300 mt-1">
+                  Your review lead will assign loan applications to you. Check back soon.
+                </p>
+              )}
             </div>
           )}
 
@@ -957,7 +983,7 @@ const CreditReviewList = () => {
             const isDisbursed = app.status === "disbursed";
             return (
               <>
-                {hasActionPermission("approveLoans") &&
+                {canUpdateLoanStatus &&
                   !isApproved &&
                   !isDisbursed && (
                     <button
@@ -967,7 +993,7 @@ const CreditReviewList = () => {
                       🔍 Review
                     </button>
                   )}
-                {isApproved && hasActionPermission("approveLoans") && (
+                {isApproved && canUpdateLoanStatus && (
                   <button
                     className="op-item op-disburse"
                     onClick={() => handleViewDetails(app, false)}
@@ -975,7 +1001,7 @@ const CreditReviewList = () => {
                     💰 Disburse
                   </button>
                 )}
-                {isDisbursed && hasActionPermission("approveLoans") && (
+                {isDisbursed && canUpdateLoanStatus && (
                   <button
                     className="op-item op-disburse"
                     title="Confirm the customer has received the funds and start the repayment clock"
@@ -984,14 +1010,12 @@ const CreditReviewList = () => {
                     ✅ Activate Loan
                   </button>
                 )}
-                {hasActionPermission("viewLoans") && (
-                  <button
-                    className="op-item op-details"
-                    onClick={() => handleViewDetails(app, true)}
-                  >
-                    📋 Details
-                  </button>
-                )}
+                <button
+                  className="op-item op-details"
+                  onClick={() => handleViewDetails(app, true)}
+                >
+                  📋 Details
+                </button>
               </>
             );
           })()}
