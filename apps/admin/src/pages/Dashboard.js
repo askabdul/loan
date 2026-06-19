@@ -142,12 +142,6 @@ const Dashboard = () => {
 
       const overviewPayload = overviewResult.value?.data || {};
       const stats = overviewPayload.stats || {};
-      const nextInterval = Number(
-        overviewPayload?.meta?.dashboardRefreshIntervalSeconds,
-      );
-      if (Number.isFinite(nextInterval) && nextInterval >= 10) {
-        setRefreshIntervalSeconds(nextInterval);
-      }
       const loanAnalytics =
         loanAnalyticsResult.status === "fulfilled"
           ? loanAnalyticsResult.value?.data

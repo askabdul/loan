@@ -114,10 +114,6 @@ const SimpleDashboard = () => {
       const data = response?.data || {};
       setDashboardData(data.stats || null);
       setRecentActivities(buildRecentActivities(data.recentActivity));
-      const nextInterval = Number(data?.meta?.dashboardRefreshIntervalSeconds);
-      if (Number.isFinite(nextInterval) && nextInterval >= 10) {
-        setRefreshIntervalSeconds(nextInterval);
-      }
       setLastUpdated(new Date());
     } catch (err) {
       setError("Failed to load dashboard data. Please try again.");
