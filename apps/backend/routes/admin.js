@@ -655,12 +655,27 @@ router.get(
   }),
 );
 
+// Status transitions each role is permitted to make.
+// super-admin and admin bypass this entirely (handled below).
+const ROLE_STATUS_PERMISSIONS = {
+  "review-officer":        ["under-review", "approved", "rejected", "hanged-up"],
+  "review-lead":           ["under-review", "approved", "rejected", "hanged-up"],
+  "local-manager":         ["under-review", "approved", "rejected", "hanged-up"],
+  "collection-lead":       ["under-review", "hanged-up"],
+  "collection-officer":    ["under-review"],
+  "precollection-lead":    ["under-review", "hanged-up"],
+  "precollection-officer": ["under-review"],
+  "customer-service":      [],
+};
+
+// Roles that can only touch loans explicitly assigned to them
+const ASSIGNED_ONLY_ROLES = new Set(["review-officer", "collection-officer", "precollection-officer"]);
+
 // PATCH /api/admin/loans/:id/status
 router.patch(
   "/loans/:id/status",
   requireMenuAccess("creditReview"),
   requireSubMenuAccess("creditReview", "list"),
-  requireActionPermission("updateLoanStatus"),
   [
     body("status").isIn([
       "pending",
@@ -686,13 +701,32 @@ router.patch(
     if (!loan) return next(new AppError("Loan not found", 404));
 
     const roleName = req.admin?.Role?.name;
-    if (roleName === "review-officer") {
-      if (!loan.assignedOfficerId || loan.assignedOfficerId !== req.admin.id) {
+    const isSuperAdmin = roleName === "super-admin";
+    const isAdmin = roleName === "admin";
+
+    // Enforce which statuses this role may set
+    if (!isSuperAdmin && !isAdmin) {
+      const allowedStatuses = ROLE_STATUS_PERMISSIONS[roleName];
+      if (!allowedStatuses) {
+        return next(new AppError("Your role does not have permission to update loan status.", 403));
+      }
+      if (!allowedStatuses.includes(status)) {
         return next(
           new AppError(
-            "You can only update review status for loans assigned to you.",
+            allowedStatuses.length
+              ? `Your role can only set status to: ${allowedStatuses.join(", ")}.`
+              : "Your role cannot update loan status.",
             403,
           ),
+        );
+      }
+    }
+
+    // Officers can only act on loans assigned to them
+    if (ASSIGNED_ONLY_ROLES.has(roleName)) {
+      if (!loan.assignedOfficerId || loan.assignedOfficerId !== req.admin.id) {
+        return next(
+          new AppError("You can only update status for loans assigned to you.", 403),
         );
       }
     }
