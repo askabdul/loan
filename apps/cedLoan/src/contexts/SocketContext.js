@@ -28,11 +28,12 @@ export const SocketProvider = ({ children }) => {
           "",
         ),
         {
+          auth: { token: localStorage.getItem("token") },
           transports: ["websocket", "polling"],
           withCredentials: true,
           forceNew: true,
           reconnection: true,
-          timeout: 5000,
+          timeout: 10000,
         },
       );
 

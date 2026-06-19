@@ -37,11 +37,13 @@ app.use(helmet());
 // Rate limiting - more lenient for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === "production" ? 100 : 1000, // Higher limit for development
+  max: process.env.NODE_ENV === "production" ? 500 : 1000,
   message: "Too many requests from this IP, please try again later.",
   skip: (req) => {
-    // Skip rate limiting for health checks and development
-    return req.path === "/api/health" || process.env.NODE_ENV !== "production";
+    return (
+      req.path === "/api/health" ||
+      process.env.NODE_ENV !== "production"
+    );
   },
 });
 app.use("/api/", limiter);
@@ -54,7 +56,7 @@ const allowedOrigins = [
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3001",
   "https://cedloan.netlify.app",
-  "https://cedloan-admin.netlify.app"
+  "https://cedloan-admin.netlify.app",
 ];
 
 const corsOptions = {

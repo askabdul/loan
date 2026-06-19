@@ -10,6 +10,7 @@ import {
   FiActivity,
 } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
+import { useAdminSocket } from "../contexts/AdminSocketContext";
 import { useNavigate } from "react-router-dom";
 import apiService from "../services/api";
 
@@ -91,13 +92,13 @@ const ActivityIcon = ({ type }) => {
 
 const SimpleDashboard = () => {
   const { user, hasDataAccess, hasMenuAccess, hasSubMenuAccess } = useAuth();
+  const { dashboardStats } = useAdminSocket();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [recentActivities, setRecentActivities] = useState([]);
-  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(60);
 
   const fetchDashboardData = useCallback(async () => {
     const token = localStorage.getItem("adminToken");
@@ -131,15 +132,12 @@ const SimpleDashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  // Merge real-time socket stats into dashboard data without a full HTTP refetch
   useEffect(() => {
-    const token = localStorage.getItem("adminToken");
-    if (!token) return;
-    const intervalMs = Math.max(10, Number(refreshIntervalSeconds || 60)) * 1000;
-    const intervalId = setInterval(() => {
-      fetchDashboardData();
-    }, intervalMs);
-    return () => clearInterval(intervalId);
-  }, [fetchDashboardData, refreshIntervalSeconds]);
+    if (!dashboardStats) return;
+    setDashboardData((prev) => (prev ? { ...prev, ...dashboardStats } : prev));
+    setLastUpdated(new Date());
+  }, [dashboardStats]);
 
   const getUserName = () => {
     if (user?.personalInfo?.firstName && user?.personalInfo?.lastName)

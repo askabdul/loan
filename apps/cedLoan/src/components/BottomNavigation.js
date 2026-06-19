@@ -23,7 +23,7 @@ const BottomNavigation = () => {
     fetchCount();
 
     // Refresh count when notifications page is left
-    const interval = setInterval(fetchCount, 60000);
+    const interval = setInterval(fetchCount, 5 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(interval);

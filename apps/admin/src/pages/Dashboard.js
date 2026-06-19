@@ -8,6 +8,7 @@ import {
   FiBarChart2,
 } from "react-icons/fi";
 import { useAuth } from "../contexts/AuthContext";
+import { useAdminSocket } from "../contexts/AdminSocketContext";
 import apiService from "../services/api";
 import {
   LineChart,
@@ -107,12 +108,12 @@ const buildRecentActivities = (recentActivity = {}) => {
 
 const Dashboard = () => {
   const { hasActionPermission } = useAuth();
+  const { dashboardStats } = useAdminSocket();
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [period, setPeriod] = useState("30d");
-  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(60);
   const [recentActivities, setRecentActivities] = useState([]);
   const [chartData, setChartData] = useState({
     loanTrends: [],
@@ -220,15 +221,12 @@ const Dashboard = () => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  // Merge real-time socket stats into dashboard data without a full HTTP refetch
   useEffect(() => {
-    const token = localStorage.getItem("adminToken");
-    if (!token) return;
-    const intervalMs = Math.max(10, Number(refreshIntervalSeconds || 60)) * 1000;
-    const intervalId = setInterval(() => {
-      fetchDashboardData();
-    }, intervalMs);
-    return () => clearInterval(intervalId);
-  }, [fetchDashboardData, refreshIntervalSeconds]);
+    if (!dashboardStats) return;
+    setDashboardData((prev) => (prev ? { ...prev, ...dashboardStats } : prev));
+    setLastUpdated(new Date());
+  }, [dashboardStats]);
 
   const stats = [
     {

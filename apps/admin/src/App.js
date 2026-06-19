@@ -16,6 +16,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { ToastContainer, toast } from "react-toastify";
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "./contexts/AuthContext";
+import { AdminSocketProvider } from "./contexts/AdminSocketContext";
 import { TabProvider } from "./contexts/TabContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout/Layout";
@@ -340,6 +341,7 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
+          <AdminSocketProvider>
           <Router>
             <TabProvider>
               <UnauthorizedHandler />
@@ -842,6 +844,7 @@ function App() {
               </div>
             </TabProvider>
           </Router>
+          </AdminSocketProvider>
         </AuthProvider>
         <ToastContainer
           position="top-right"

@@ -18,11 +18,15 @@ class WebSocketService {
       cors: {
         origin: [
           process.env.ADMIN_FRONTEND_URL || "http://localhost:3001",
+          process.env.CLIENT_FRONTEND_URL || "http://localhost:3000",
           "http://localhost:3000",
+          "http://localhost:3001",
           "http://localhost:3002",
           "http://127.0.0.1:3000",
           "http://127.0.0.1:3001",
           "http://127.0.0.1:3002",
+          "https://loan-admin-1j7k.onrender.com",
+          "https://loan-app-bxb8.onrender.com",
         ].filter(Boolean),
         methods: ["GET", "POST"],
         credentials: true,
@@ -37,18 +41,23 @@ class WebSocketService {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const { Admin, Role } = getModels();
-        const admin = await Admin.findByPk(decoded.id, {
-          include: [{ model: Role, as: "Role" }],
-        });
+        const { Admin, Role, User } = getModels();
 
-        if (!admin) {
-          return next(new Error("Admin not found"));
+        if (decoded.type === "admin") {
+          const admin = await Admin.findByPk(decoded.id, {
+            include: [{ model: Role, as: "Role" }],
+          });
+          if (!admin) return next(new Error("Admin not found"));
+          socket.clientType = "admin";
+          socket.adminId = admin.id;
+          socket.adminRole = admin.Role;
+          socket.adminEmail = admin.email;
+        } else {
+          const user = await User.findByPk(decoded.id);
+          if (!user) return next(new Error("User not found"));
+          socket.clientType = "user";
+          socket.userId = user.id;
         }
-
-        socket.adminId = admin.id;
-        socket.adminRole = admin.Role;
-        socket.adminEmail = admin.email;
 
         next();
       } catch (error) {
@@ -57,20 +66,31 @@ class WebSocketService {
     });
 
     this.io.on("connection", (socket) => {
-      console.log(`Admin connected: ${socket.adminEmail} (${socket.id})`);
+      if (socket.clientType === "admin") {
+        console.log(`Admin connected: ${socket.adminEmail} (${socket.id})`);
+      } else {
+        console.log(`User connected: ${socket.userId} (${socket.id})`);
+      }
 
       // Store client connection
       this.connectedClients.set(socket.id, {
+        clientType: socket.clientType,
         adminId: socket.adminId,
         adminRole: socket.adminRole,
         adminEmail: socket.adminEmail,
+        userId: socket.userId,
         socket: socket,
       });
 
-      // Join role-based rooms
-      if (socket.adminRole) {
+      // Join role-based rooms (admin only)
+      if (socket.clientType === "admin" && socket.adminRole) {
         socket.join(`role_${socket.adminRole.name}`);
         socket.join(`admin_${socket.adminId}`);
+      }
+
+      // Join user-specific room (user app)
+      if (socket.clientType === "user") {
+        socket.join(`user_${socket.userId}`);
       }
 
       // Handle client requests for real-time data
@@ -112,10 +132,17 @@ class WebSocketService {
       });
 
       socket.on("join-admin-room", (data) => {
+        if (socket.clientType !== "admin") return;
         socket.join(`admin_${data.adminId}`);
         if (data.role) {
           socket.join(`role_${data.role}`);
         }
+      });
+
+      // cedLoan user app joins their personal room
+      socket.on("join-user-room", (userId) => {
+        const roomId = typeof userId === "object" ? userId?.userId : userId;
+        if (roomId) socket.join(`user_${roomId}`);
       });
 
       socket.on("search", async (searchData) => {
@@ -123,7 +150,11 @@ class WebSocketService {
       });
 
       socket.on("disconnect", () => {
-        console.log(`Admin disconnected: ${socket.adminEmail} (${socket.id})`);
+        if (socket.clientType === "admin") {
+          console.log(`Admin disconnected: ${socket.adminEmail} (${socket.id})`);
+        } else {
+          console.log(`User disconnected: ${socket.userId} (${socket.id})`);
+        }
         this.connectedClients.delete(socket.id);
       });
     });

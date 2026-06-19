@@ -104,22 +104,10 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (!token || !hasUser) return;
 
-    const handleVisibilityRefresh = () => {
-      if (document.visibilityState === 'visible') {
-        fetchPermissions();
-      }
-    };
-
-    const handleFocusRefresh = () => fetchPermissions();
-    const intervalId = setInterval(() => fetchPermissions(), 60000);
-
-    window.addEventListener('focus', handleFocusRefresh);
-    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+    const intervalId = setInterval(() => fetchPermissions(), 5 * 60 * 1000);
 
     return () => {
       clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocusRefresh);
-      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
     };
   }, [token, hasUser]);
 
