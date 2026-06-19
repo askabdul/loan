@@ -1228,16 +1228,17 @@ router.post("/bridge-disbursement-webhook", async (req, res) => {
   try {
     const payload = req.body || {};
 
-    // Bridge sends response_code in callbacks (same as the initiate response)
+    // Bridge callback fields per docs: trans_ref = merchant transaction_id,
+    // trans_status = outcome code (000/001/002/003), message = description.
     const transactionId =
-      payload.transaction_id || payload.transactionId;
+      payload.trans_ref || payload.transaction_id || payload.transactionId;
     const responseCode = String(
-      payload.response_code || payload.status || "",
+      payload.trans_status || payload.response_code || payload.status || "",
     );
     const responseMessage =
+      payload.message ||
       payload.response_message ||
       payload.status_desc ||
-      payload.message ||
       "Bridge disbursement callback";
 
     if (!transactionId) {

@@ -35,6 +35,8 @@ const UserManagement = () => {
   const [showResetPinModal, setShowResetPinModal] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [userToDeactivate, setUserToDeactivate] = useState(null);
+  const [showReactivateConfirm, setShowReactivateConfirm] = useState(false);
+  const [userToReactivate, setUserToReactivate] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [newPin, setNewPin] = useState("");
 
@@ -100,12 +102,11 @@ const UserManagement = () => {
 
   const handleToggleStatus = (user) => {
     if (user.isActive) {
-      // Deactivating — require confirmation first
       setUserToDeactivate(user);
       setShowDeactivateConfirm(true);
     } else {
-      // Reactivating — no confirmation needed
-      applyToggleStatus(user, true);
+      setUserToReactivate(user);
+      setShowReactivateConfirm(true);
     }
   };
 
@@ -631,6 +632,91 @@ const UserManagement = () => {
                   className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 rounded-xl hover:bg-red-700 transition"
                 >
                   Disable Account
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* Reactivate Confirmation Modal */}
+      {showReactivateConfirm &&
+        ReactDOM.createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 250,
+              right: 0,
+              bottom: 0,
+              zIndex: 1200,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "16px",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(0,0,0,0.4)",
+              }}
+              onClick={() => setShowReactivateConfirm(false)}
+            />
+            <div
+              style={{
+                position: "relative",
+                background: "#fff",
+                borderRadius: "16px",
+                width: "100%",
+                maxWidth: "420px",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+              }}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-bold text-gray-800 m-0">
+                  Reactivate Account
+                </h3>
+                <button
+                  onClick={() => setShowReactivateConfirm(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+                >
+                  <FiX size={16} />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-1">
+                  Are you sure you want to reactivate the account for{" "}
+                  <strong className="text-gray-900">
+                    {userToReactivate?.firstName
+                      ? `${userToReactivate.firstName} ${userToReactivate.lastName || ""}`.trim()
+                      : "this user"}
+                  </strong>
+                  ?
+                </p>
+                <p className="text-xs text-emerald-600 mt-2 m-0">
+                  The user will be able to log in and use the platform again.
+                </p>
+              </div>
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
+                <button
+                  onClick={() => setShowReactivateConfirm(false)}
+                  className="px-5 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowReactivateConfirm(false);
+                    applyToggleStatus(userToReactivate, true);
+                  }}
+                  className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition"
+                >
+                  Reactivate Account
                 </button>
               </div>
             </div>
