@@ -4,6 +4,12 @@ const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://api.bridgeagw.co
 const BRIDGE_PAYMENT_PATH = "/make_payment";
 const BRIDGE_TXN_STATUS_PATH = "/get_transaction_status";
 
+// When set, overrides the amount sent to Bridge for both collections and disbursements.
+// Remove BRIDGE_TEST_AMOUNT from .env to restore real amounts in production.
+const BRIDGE_TEST_AMOUNT = process.env.BRIDGE_TEST_AMOUNT
+  ? parseFloat(process.env.BRIDGE_TEST_AMOUNT)
+  : null;
+
 const BRIDGE_SUCCESS_CODE = "000";
 const BRIDGE_FAILED_CODE = "001";
 const BRIDGE_PENDING_CODE = "002";
@@ -147,7 +153,7 @@ async function initiateBridgeCollection({ payment, loan, req, user }) {
     customer_number: normalizeGhanaPhone(payment.mobileNumber),
     transaction_id: payment.transactionId,
     trans_type: "CTM",
-    amount: parseFloat(payment.amount),
+    amount: BRIDGE_TEST_AMOUNT ?? parseFloat(payment.amount),
     nw: providerCode,
     nickname,
     payment_option: "MOM",
@@ -238,7 +244,7 @@ async function initiateBridgeDisbursement({ loan, user, req }) {
     customer_number: normalizeGhanaPhone(phone),
     transaction_id: transactionId,
     trans_type: "MTC",   // Bridge API payout type (Mobile To Client)
-    amount: disbursedAmount,
+    amount: BRIDGE_TEST_AMOUNT ?? disbursedAmount,
     nw: providerCode,
     nickname,
     payment_option: "MOM",
