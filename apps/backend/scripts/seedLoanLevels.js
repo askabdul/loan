@@ -3,11 +3,13 @@
  *
  * Business rules (confirmed):
  *   - All loans are 7-day flat terms (admin can add more via LoanConfiguration)
- *   - Total fee = 45% of principal, deducted upfront from disbursement:
+ *   - Total fee = 45% of principal:
  *       Interest 9% + Service 12% + Admin 12% + Commitment 12% = 45%
- *   - Customer RECEIVES: principal × 55%  (e.g. GHS 100 → receives GHS 55)
- *   - Customer REPAYS:   principal        (e.g. GHS 100 → owes GHS 100)
- *   - Overdue: 5% simple daily on remaining balance
+ *   - Upfront deduction = 20% of principal
+ *   - Customer RECEIVES: principal × 80%  (e.g. GHS 100 → receives GHS 80)
+ *   - Customer REPAYS: total obligation - upfront deduction
+ *       e.g. GHS 100 + GHS 45 - GHS 20 = GHS 125
+ *   - Overdue: 2% simple daily on remaining unpaid balance
  *   - No loan extensions (disabled via AppConfig enable_extension=false)
  */
 require('dotenv').config();
@@ -20,7 +22,7 @@ const FEE_RATES = {
   serviceFeePct: 12,         // % of principal
   administrationFeePct: 12,  // % of principal
   commitmentFeePct: 12,      // % of principal
-  // Total = 45%  →  customer receives 55% of principal
+  // Total fees = 45%; separate upfront deduction defaults to 20%.
 };
 
 const loanLevels = [
@@ -139,7 +141,7 @@ async function seedLoanLevels() {
     const tag = created ? 'Created' : 'Updated';
     console.log(`${tag} Level ${data.level}: ${data.name}  GHS ${data.minAmount}–${data.maxAmount}`);
   }
-  console.log('✅ Loan levels seeded (7-day flat, 45% upfront fee structure).');
+  console.log('✅ Loan levels seeded (7-day flat, 45% total fee + 20% upfront deduction).');
   process.exit(0);
 }
 

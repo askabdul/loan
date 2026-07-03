@@ -157,8 +157,12 @@ const LoanApplication = () => {
         const d = result.data;
         const fees = {
           repaymentAmount: d.repaymentAmount,   // totalAmount - upfrontFee (e.g. 125 for GHS 100)
+          totalAmount:     d.totalAmount,
+          amountReceived:  d.amountReceived,
+          upfrontFee:      d.upfrontFee,
           totalFees:       d.fees.total,
           upfrontPct:      d.upfrontPct,
+          overdueFeePct:   d.overdueFeePct || d.rates?.overdueFeePct || 2,
         };
         setDynamicFees(fees);
         setIsCalculatingFees(false);
@@ -189,14 +193,19 @@ const LoanApplication = () => {
     );
     const totalAmount     = r2(amount + totalFees);
     const upfrontFee      = r2((amount * upfrontPct) / 100);
+    const amountReceived  = r2(amount - upfrontFee);
     const repaymentAmount = r2(totalAmount - upfrontFee); // e.g. 125 for GHS 100
 
-    return { repaymentAmount, totalFees, upfrontPct };
+    return {
+      repaymentAmount,
+      totalAmount,
+      amountReceived,
+      upfrontFee,
+      totalFees,
+      upfrontPct,
+      overdueFeePct: 2,
+    };
   };
-
-  // repaymentAmount: what the user must pay before overdue (totalAmount - upfrontFee)
-  const getRepaymentAmount = () =>
-    dynamicFees?.repaymentAmount ?? calculateStaticFees(loanAmount, loanTerm).repaymentAmount;
 
   // Effect to recalculate fees when amount, term, or configuration changes
   useEffect(() => {
@@ -267,6 +276,35 @@ const LoanApplication = () => {
 
   const handleTermChange = (days) => {
     setSelectedTerm(days);
+  };
+
+  const handleCancelApplication = async () => {
+    if (!activeLoan?.id) return;
+
+    const confirmed = window.confirm(
+      "Cancel this loan application? You can apply again after it is cancelled.",
+    );
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await loansAPI.cancelLoan(activeLoan.id);
+      showToast(
+        response.message || "Loan application cancelled successfully.",
+        "success",
+      );
+      setActiveLoan(null);
+      setLoanStatus(null);
+      setRemainingBalance(0);
+      await checkActiveLoan();
+    } catch (error) {
+      showToast(
+        error.message || "Could not cancel this application. Please try again.",
+        "error",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Render different screens based on loan status
@@ -395,6 +433,14 @@ const LoanApplication = () => {
           any questions about your application.
         </p>
       </div>
+
+      <button
+        className="w-full border border-red-200 text-red-600 hover:bg-red-50 transition-colors rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+        onClick={handleCancelApplication}
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? "Cancelling…" : "Cancel Application"}
+      </button>
     </>
   );
 
@@ -874,7 +920,7 @@ const LoanApplication = () => {
                             <span>GHS {_bal.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Late fee ({activeLoan.overdueDays}d × 5%)</span>
+                            <span>Late fee ({activeLoan.overdueDays}d × {activeLoan.overdueFeePct || 2}%)</span>
                             <span>GHS {_fee.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between font-semibold border-t border-amber-200 pt-0.5 mt-0.5">
@@ -1537,18 +1583,31 @@ const LoanApplication = () => {
           </p>
 
           {(() => {
-            const repaymentAmount = getRepaymentAmount();
+            const fees = dynamicFees || calculateStaticFees(loanAmount, loanTerm);
+            const repaymentAmount = fees.repaymentAmount;
+            const amountReceived = fees.amountReceived;
+            const upfrontFee = fees.upfrontFee;
             const dueDate = new Date(Date.now() + loanTerm * 24 * 60 * 60 * 1000);
             return (
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">You Borrow</span>
+                  <span className="text-gray-500">You Request</span>
                   <span className="font-semibold text-gray-800">GHS {loanAmount.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Upfront Deduction ({fees.upfrontPct || 20}%)</span>
+                  <span className="font-semibold text-gray-800">GHS {upfrontFee.toFixed(2)}</span>
                 </div>
 
                 <div className="flex justify-between items-center bg-emerald-50 rounded-xl px-4 py-3 border border-emerald-200">
                   <span className="text-sm font-bold text-emerald-800">💸 You Receive</span>
-                  <span className="text-lg font-bold text-emerald-700">GHS {loanAmount.toFixed(2)}</span>
+                  <span className="text-lg font-bold text-emerald-700">GHS {amountReceived.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Total Fees</span>
+                  <span className="font-semibold text-gray-800">GHS {(fees.totalFees || 0).toFixed(2)}</span>
                 </div>
 
                 <div className="border-t border-gray-100 pt-3 space-y-1.5">
@@ -1567,7 +1626,7 @@ const LoanApplication = () => {
 
           <div className="mt-4 bg-amber-50 rounded-xl p-3 border border-amber-100">
             <p className="text-xs text-amber-800">
-              <strong>⚠️ Late payment:</strong> Additional charges apply if payment is missed by the due date.
+              <strong>⚠️ Late payment:</strong> After the due date, {dynamicFees?.overdueFeePct || 2}% of your unpaid balance is added each day until you pay.
             </p>
           </div>
         </div>
@@ -1633,8 +1692,8 @@ const LoanApplication = () => {
                 </p>
                 <p>
                   <strong>2. Service Charges:</strong> Applicable service charges
-                  are included in the loan and managed by CEDI Loan. You repay
-                  only the amount you borrowed.
+                  are added to your loan. Your upfront deduction reduces the
+                  balance left to repay.
                 </p>
                 <p>
                   <strong>3. Overdue Penalties:</strong> Additional charges apply
@@ -1809,7 +1868,7 @@ const LoanApplication = () => {
                             <span>GHS {_bal2.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Late fee ({activeLoan.overdueDays}d × 5%)</span>
+                            <span>Late fee ({activeLoan.overdueDays}d × {activeLoan.overdueFeePct || 2}%)</span>
                             <span>GHS {_fee2.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between font-semibold border-t border-amber-200 pt-0.5 mt-0.5 text-sm">

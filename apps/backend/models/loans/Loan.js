@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../../config/database");
+const { buildLoanMath } = require("../../utils/loanMath");
 
 const Loan = sequelize.define(
   "Loan",
@@ -371,39 +372,30 @@ const Loan = sequelize.define(
 //   remainingBalance (set at disbursement) = totalAmount - upfrontFee  (e.g. 125)
 //   Overdue: 2%/day simple on remainingBalance, accrued nightly
 Loan._calculateAmounts = (loan) => {
-  const r2 = (n) => Math.round(n * 100) / 100;
-  const amt = parseFloat(loan.amount) || 0;
-  const rate    = parseFloat(loan.interestRate)         || 0;
-  const svcPct  = parseFloat(loan.serviceFeePct)        || 0;
-  const admPct  = parseFloat(loan.administrationFeePct) || 0;
-  const comPct  = parseFloat(loan.commitmentFeePct)     || 0;
-  const upfPct  = parseFloat(loan.upfrontDeductionPct)  || 20;
+  const math = buildLoanMath({
+    amount: loan.amount,
+    interestRate: loan.interestRate,
+    serviceFeePct: loan.serviceFeePct,
+    administrationFeePct: loan.administrationFeePct,
+    commitmentFeePct: loan.commitmentFeePct,
+    upfrontDeductionPct: loan.upfrontDeductionPct,
+    overdueFeePct: loan.overdueFeePct,
+  });
 
-  // Individual fee amounts (on principal)
-  loan.totalInterest     = r2((amt * rate)   / 100);
-  loan.serviceFee        = r2((amt * svcPct) / 100);
-  loan.administrationFee = r2((amt * admPct) / 100);
-  loan.commitmentFee     = r2((amt * comPct) / 100);
-
-  const totalFees =
-    loan.totalInterest +
-    loan.serviceFee +
-    loan.administrationFee +
-    loan.commitmentFee;
-
-  // upfrontFee: portion of principal withheld at disbursement
-  loan.upfrontFee     = r2((amt * upfPct) / 100);
-  // amountReceived: cash sent to customer wallet
-  loan.amountReceived = r2(amt - loan.upfrontFee);
-  // totalAmount: principal + all fees = total customer obligation
-  loan.totalAmount    = r2(amt + totalFees);
-  // monthlyPayment = what they owe before overdue (displayed in UI)
-  loan.monthlyPayment = r2(loan.totalAmount - loan.upfrontFee);
+  loan.totalInterest = math.totalInterest;
+  loan.serviceFee = math.serviceFee;
+  loan.administrationFee = math.administrationFee;
+  loan.commitmentFee = math.commitmentFee;
+  loan.upfrontFee = math.upfrontFee;
+  loan.amountReceived = math.amountReceived;
+  loan.totalAmount = math.totalAmount;
+  // monthlyPayment is the customer's repayable balance before overdue.
+  loan.monthlyPayment = math.repaymentAmount;
 
   // remainingBalance on first creation = totalAmount - upfrontFee (e.g. 125)
   // Only set on new loans (do not overwrite as payments reduce it over time)
   if (!loan.remainingBalance || parseFloat(loan.remainingBalance) === 0) {
-    loan.remainingBalance = loan.monthlyPayment;
+    loan.remainingBalance = math.remainingBalanceAtDisbursement;
   }
 };
 

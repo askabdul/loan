@@ -121,12 +121,12 @@ const allConfigs = [
   // Term-specific fee rates — canonical format: {type}_{term}_days
   // These are read by cedLoan fee calculator (ConfigContext.getLoanConfig)
   // and also writable via /api/config-new/admin/loan-calculations/:termDays
-  // Fee breakdown: 45% total deducted upfront from disbursement
+  // Fee breakdown: 45% total charge; separate 20% upfront deduction controls cash received
   // Interest (9%) + Service (12%) + Admin (12%) + Commitment (12%) = 45%
-  { key: 'interest_rate_7_days',   value: 9,  description: 'Interest rate % for 7-day loans (flat, deducted upfront)',    category: 'loans', isPublic: true },
-  { key: 'service_fee_7_days',     value: 12, description: 'Service fee % for 7-day loans (deducted upfront)',           category: 'loans', isPublic: true },
-  { key: 'admin_fee_7_days',       value: 12, description: 'Administration fee % for 7-day loans (deducted upfront)',    category: 'loans', isPublic: true },
-  { key: 'commitment_fee_7_days',  value: 12, description: 'Commitment fee % for 7-day loans (deducted upfront)',        category: 'loans', isPublic: true },
+  { key: 'interest_rate_7_days',   value: 9,  description: 'Interest rate % for 7-day loans (flat charge on principal)', category: 'loans', isPublic: true },
+  { key: 'service_fee_7_days',     value: 12, description: 'Service fee % for 7-day loans (flat charge on principal)', category: 'loans', isPublic: true },
+  { key: 'admin_fee_7_days',       value: 12, description: 'Administration fee % for 7-day loans (flat charge on principal)', category: 'loans', isPublic: true },
+  { key: 'commitment_fee_7_days',  value: 12, description: 'Commitment fee % for 7-day loans (flat charge on principal)', category: 'loans', isPublic: true },
   { key: 'interest_rate_14_days',  value: 12, description: 'Interest rate % for 14-day loans',   category: 'loans', isPublic: true },
   { key: 'service_fee_14_days',    value: 5,  description: 'Service fee % for 14-day loans',      category: 'loans', isPublic: true },
   { key: 'admin_fee_14_days',      value: 2,  description: 'Admin fee % for 14-day loans',        category: 'loans', isPublic: true },

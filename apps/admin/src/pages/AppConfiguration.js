@@ -124,6 +124,7 @@ const AppConfiguration = () => {
         service_fee_30_days: "loanCalculations",
         admin_fee_30_days: "loanCalculations",
         commitment_fee_30_days: "loanCalculations",
+        upfront_deduction_pct: "loanCalculations",
         overdue_fee_daily_pct: "loanCalculations",
         // Contact info
         support_phone: "contactInfo",
@@ -267,6 +268,20 @@ const AppConfiguration = () => {
         const targetCategory = key.startsWith("dashboard_") ? "system" : "loan";
         if (categorizedConfig[targetCategory][key] === undefined) {
           categorizedConfig[targetCategory][key] = defaultValue;
+        }
+      });
+
+      const loanCalculationDefaults = {
+        interest_rate_7_days: 9,
+        service_fee_7_days: 12,
+        admin_fee_7_days: 12,
+        commitment_fee_7_days: 12,
+        upfront_deduction_pct: 20,
+        overdue_fee_daily_pct: 2,
+      };
+      Object.entries(loanCalculationDefaults).forEach(([key, defaultValue]) => {
+        if (categorizedConfig.loanCalculations[key] === undefined) {
+          categorizedConfig.loanCalculations[key] = defaultValue;
         }
       });
 
@@ -758,6 +773,16 @@ const AppConfiguration = () => {
           unit: "%",
           min: 0,
           max: 20,
+          step: 0.01,
+        },
+        upfront_deduction_pct: {
+          label: "Upfront Deduction",
+          description:
+            "Percentage of requested principal withheld before disbursement. A 20% setting means GHS 100 requested sends GHS 80 and leaves GHS 125 to repay when fees total 45%.",
+          type: "number",
+          unit: "%",
+          min: 0,
+          max: 100,
           step: 0.01,
         },
       },

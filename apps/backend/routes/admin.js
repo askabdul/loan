@@ -49,7 +49,8 @@ const LIFECYCLE_KEYS = new Set([
   'auto_disburse_on_approval', 'activate_loan_on_disbursement',
   'overdue_day_count_mode', 'loan_extension_daily_fee_rate',
   'max_extension_days_per_request', 'max_extension_count',
-  'max_overdue_days_for_extension', 'reserve_release_days',
+  'max_overdue_days_for_extension', 'overdue_fee_daily_pct',
+  'upfront_deduction_pct', 'reserve_release_days',
   'dashboard_refresh_interval_seconds', 'dashboard_cache_ttl_seconds',
 ]);
 
@@ -676,6 +677,7 @@ router.patch(
   "/loans/:id/status",
   requireMenuAccess("creditReview"),
   requireSubMenuAccess("creditReview", "list"),
+  requireActionPermission("updateLoanStatus"),
   [
     body("status").isIn([
       "pending",
@@ -766,7 +768,7 @@ router.patch(
             updates.disbursementReference = disbResult.transactionId;
             updates.disbursementChannel = "momo";
             notes.push({
-              note: `Bridge disbursement initiated — txn: ${disbResult.transactionId}, network: ${disbResult.detectedNetwork}, amount: GHS ${disbResult.disbursedAmount}`,
+              note: `Bridge disbursement initiated — txn: ${disbResult.transactionId}, network: ${disbResult.detectedNetwork}, business amount: GHS ${disbResult.disbursedAmount}, Bridge amount sent: GHS ${disbResult.bridgeAmount}`,
               addedBy: req.admin.id,
               addedAt: now,
               type: "bridge_disbursement_started",
@@ -807,8 +809,9 @@ router.patch(
     } else if (status === "disbursed") {
       const disbDate = new Date();
       updates.disbursementDate = disbDate;
-      // Set remaining balance to full repayment amount so customer sees correct balance
-      updates.remainingBalance = loan.totalAmount || loan.amount;
+      // Remaining balance is the obligation after the upfront deduction.
+      updates.remainingBalance =
+        parseFloat(loan.totalAmount || 0) - parseFloat(loan.upfrontFee || 0);
       updates.disbursementStatus = "sent";
       updates.disbursementFailureReason = null;
       updates.disbursementFailedAt = null;

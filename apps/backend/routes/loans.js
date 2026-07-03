@@ -2,12 +2,13 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { Op, fn, col, literal } = require("sequelize");
 const { sequelize } = require("../config/database");
-const { Loan, User, LoanLevel, Payment, Notification, AppConfig } = require("../models");
+const { Loan, User, LoanLevel, LoanTerm, Payment, Notification, AppConfig } = require("../models");
 const { auth, adminAuth } = require("../middleware/auth");
 const kycCheck = require("../middleware/kycCheck");
 const performanceTrackingService = require("../services/performanceTrackingService");
 const { checkAndPromoteLevel } = require("../services/levelProgressionService");
 const { getLoanLifecycleSettings, calculateOverdueDays } = require("../services/loanLifecycleSettings");
+const { buildLoanMath } = require("../utils/loanMath");
 
 const router = express.Router();
 
@@ -58,7 +59,7 @@ const LOAN_STATUS_MESSAGES = {
   "under-review": (loan) =>
     `Your loan application of GHS ${parseFloat(loan.amount).toLocaleString()} is now being reviewed by our credit team.`,
   disbursed: (loan) =>
-    `GHS ${parseFloat(loan.amount).toLocaleString()} has been disbursed to your account. Your repayment starts soon.`,
+    `GHS ${parseFloat(loan.amountReceived || loan.amount).toLocaleString()} has been disbursed to your account. Your repayment starts soon.`,
   active: (loan) =>
     `Your loan of GHS ${parseFloat(loan.amount).toLocaleString()} is now active. Keep track of your repayment schedule.`,
   completed: (loan) =>
@@ -138,6 +139,49 @@ const buildDisbursementActivationUpdates = ({ loan, now, activateLoan }) => {
   }
 
   return updates;
+};
+
+const getConfiguredLoanRates = async (termInDays, currentLevel) => {
+  const loanTerm = await LoanTerm.findOne({
+    where: { durationDays: termInDays, enabled: true, isActive: true },
+  }).catch(() => null);
+
+  const [
+    interestCfg,
+    serviceCfg,
+    adminCfg,
+    commitmentCfg,
+    upfrontCfg,
+    overdueCfg,
+  ] = await Promise.all([
+    AppConfig.getConfig(`interest_rate_${termInDays}_days`).catch(() => null),
+    AppConfig.getConfig(`service_fee_${termInDays}_days`).catch(() => null),
+    AppConfig.getConfig(`admin_fee_${termInDays}_days`).catch(() => null),
+    AppConfig.getConfig(`commitment_fee_${termInDays}_days`).catch(() => null),
+    AppConfig.getConfig("upfront_deduction_pct").catch(() => null),
+    AppConfig.getConfig("overdue_fee_daily_pct").catch(() => null),
+  ]);
+
+  return {
+    interestRate: interestCfg
+      ? Number(interestCfg.value)
+      : Number(loanTerm?.interestRate ?? currentLevel.interestRate ?? 9),
+    serviceFeePct: serviceCfg
+      ? Number(serviceCfg.value)
+      : Number(loanTerm?.serviceFeePct ?? currentLevel.serviceFeePct ?? 12),
+    administrationFeePct: adminCfg
+      ? Number(adminCfg.value)
+      : Number(
+          loanTerm?.administrationFeePct ??
+            currentLevel.administrationFeePct ??
+            12,
+        ),
+    commitmentFeePct: commitmentCfg
+      ? Number(commitmentCfg.value)
+      : Number(loanTerm?.commitmentFeePct ?? currentLevel.commitmentFeePct ?? 12),
+    upfrontDeductionPct: upfrontCfg ? Number(upfrontCfg.value) : 20,
+    overdueFeePct: overdueCfg ? Number(overdueCfg.value) : 2,
+  };
 };
 
 // GET /api/loans/active-check
@@ -291,7 +335,11 @@ router.post(
         }
       }
 
-      // Copy fee rates from the level so _calculateAmounts uses the right values
+      const configuredRates = await getConfiguredLoanRates(
+        termInDays,
+        currentLevel,
+      );
+
       const loan = await Loan.create({
         userId: req.user.id,
         amount,
@@ -303,14 +351,8 @@ router.post(
         isAutoApproved,
         status: initialStatus,
         approvalDate: isAutoApproved ? new Date() : null,
-        // Fee rates from the loan level (flat % of principal)
-        interestRate:         parseFloat(currentLevel.interestRate)         || 9,
-        serviceFeePct:        parseFloat(currentLevel.serviceFeePct)        || 12,
-        administrationFeePct: parseFloat(currentLevel.administrationFeePct) || 12,
-        commitmentFeePct:     parseFloat(currentLevel.commitmentFeePct)     || 12,
-        // upfrontDeductionPct: % of principal withheld at disbursement (e.g. 20%)
-        upfrontDeductionPct: await AppConfig.getConfig('upfront_deduction_pct').then(r => r ? Number(r.value) : 20).catch(() => 20),
-        overdueFeePct: await AppConfig.getConfig('overdue_fee_daily_pct').then(r => r ? Number(r.value) : 2).catch(() => 2),
+        // Central app configuration controls the actual loan math.
+        ...configuredRates,
       });
 
       const io = req.app.get("io");
@@ -468,26 +510,57 @@ router.get("/calculate/:amount/:duration", auth, async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Invalid loan amount or duration" });
-    // Use the Loan model's _calculateAmounts helper by building a temp object
-    const a = parseFloat(amount),
-      dur = parseInt(duration),
-      interestRate = 0.15;
-    const totalInterest = Math.round(a * interestRate * 100) / 100;
-    const serviceFee = Math.round(a * 0.01 * 100) / 100;
-    const totalAmount =
-      Math.round((a + totalInterest + serviceFee) * 100) / 100;
-    const monthlyPayment =
-      dur > 0 ? Math.round((totalAmount / dur) * 100) / 100 : 0;
+    const a = parseFloat(amount);
+    const dur = parseInt(duration);
+    const termInDays = [7, 14, 30, 60, 90, 180].includes(dur)
+      ? dur
+      : dur <= 24
+        ? dur * 30
+        : dur;
+    const [
+      interestCfg,
+      serviceCfg,
+      adminCfg,
+      commitmentCfg,
+      upfrontCfg,
+      overdueCfg,
+    ] = await Promise.all([
+      AppConfig.getConfig(`interest_rate_${termInDays}_days`).catch(() => null),
+      AppConfig.getConfig(`service_fee_${termInDays}_days`).catch(() => null),
+      AppConfig.getConfig(`admin_fee_${termInDays}_days`).catch(() => null),
+      AppConfig.getConfig(`commitment_fee_${termInDays}_days`).catch(() => null),
+      AppConfig.getConfig("upfront_deduction_pct").catch(() => null),
+      AppConfig.getConfig("overdue_fee_daily_pct").catch(() => null),
+    ]);
+    const math = buildLoanMath({
+      amount: a,
+      interestRate: interestCfg ? Number(interestCfg.value) : 9,
+      serviceFeePct: serviceCfg ? Number(serviceCfg.value) : 12,
+      administrationFeePct: adminCfg ? Number(adminCfg.value) : 12,
+      commitmentFeePct: commitmentCfg ? Number(commitmentCfg.value) : 12,
+      upfrontDeductionPct: upfrontCfg ? Number(upfrontCfg.value) : 20,
+      overdueFeePct: overdueCfg ? Number(overdueCfg.value) : 2,
+    });
     res.json({
       success: true,
       calculation: {
-        loanAmount: a,
+        loanAmount: math.principal,
         duration: dur,
-        interestRate,
-        totalInterest,
-        serviceFee,
-        totalAmount,
-        monthlyPayment,
+        termInDays,
+        interestRate: math.rates.interestRate,
+        totalInterest: math.totalInterest,
+        serviceFee: math.serviceFee,
+        administrationFee: math.administrationFee,
+        commitmentFee: math.commitmentFee,
+        totalFees: math.totalFees,
+        upfrontDeductionPct: math.rates.upfrontDeductionPct,
+        upfrontFee: math.upfrontFee,
+        amountReceived: math.amountReceived,
+        totalAmount: math.totalAmount,
+        monthlyPayment: math.repaymentAmount,
+        repaymentAmount: math.repaymentAmount,
+        overdueFeePct: math.rates.overdueFeePct,
+        dailyOverdueFeeOnRepayment: math.dailyOverdueFeeOnRepayment,
       },
     });
   } catch (err) {
@@ -534,6 +607,15 @@ router.put("/:id/cancel", auth, async (req, res) => {
         message: "Loan not found or cannot be cancelled",
       });
     await loan.update({ status: "cancelled" });
+    await createLoanNotification(req.user.id, loan, "cancelled");
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user-${req.user.id}`).emit("loan-status-changed", {
+        loanId: loan.id,
+        status: "cancelled",
+        message: "Your loan application has been cancelled.",
+      });
+    }
     res.json({
       success: true,
       message: "Loan application cancelled successfully",
@@ -836,8 +918,9 @@ router.put(
         });
         Object.assign(updates, activationUpdates);
       } else if (!parseFloat(loan.remainingBalance) && finalStatus === "approved") {
-        updates.remainingBalance = parseFloat(loan.totalAmount || loan.amount || 0);
-        }
+        updates.remainingBalance =
+          parseFloat(loan.totalAmount || 0) - parseFloat(loan.upfrontFee || 0);
+      }
 
       await loan.update(updates);
       const io = req.app.get("io");
@@ -1529,7 +1612,8 @@ router.post(
       });
 
       if (disbursedAmount) {
-        disbursementUpdates.remainingBalance = parseFloat(disbursedAmount);
+        adminNotes[adminNotes.length - 1].note +=
+          `. Actual amount recorded: GHS ${parseFloat(disbursedAmount).toFixed(2)}. Repayment balance remains based on approved loan terms.`;
       }
 
       await loan.update({

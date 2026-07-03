@@ -148,12 +148,13 @@ async function initiateBridgeCollection({ payment, loan, req, user }) {
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
     "CEDI Customer";
 
+  const bridgeAmount = BRIDGE_TEST_AMOUNT ?? parseFloat(payment.amount);
   const payload = {
     reference: `Loan payment ${loan?.loanId || payment.id}`,
     customer_number: normalizeGhanaPhone(payment.mobileNumber),
     transaction_id: payment.transactionId,
     trans_type: "CTM",
-    amount: BRIDGE_TEST_AMOUNT ?? parseFloat(payment.amount),
+    amount: bridgeAmount,
     nw: providerCode,
     nickname,
     payment_option: "MOM",
@@ -183,6 +184,7 @@ async function initiateBridgeCollection({ payment, loan, req, user }) {
         httpStatus: response.status,
         callbackUrl,
         providerCode,
+        bridgeAmount,
         requestPayload: { ...payload, service_id: undefined },
         rawResponse: responseBody,
       },
@@ -231,6 +233,7 @@ async function initiateBridgeDisbursement({ loan, user, req }) {
   const disbursedAmount = parseFloat(loan.amountReceived) > 0
     ? parseFloat(loan.amountReceived)
     : principal;
+  const bridgeAmount = BRIDGE_TEST_AMOUNT ?? disbursedAmount;
 
   // Generic webhook — Bridge identifies the loan via the transaction_id we set
   const callbackUrl = buildCallbackUrl(req, "/api/loans/bridge-disbursement-webhook");
@@ -244,7 +247,7 @@ async function initiateBridgeDisbursement({ loan, user, req }) {
     customer_number: normalizeGhanaPhone(phone),
     transaction_id: transactionId,
     trans_type: "MTC",   // Bridge API payout type (Mobile To Client)
-    amount: BRIDGE_TEST_AMOUNT ?? disbursedAmount,
+    amount: bridgeAmount,
     nw: providerCode,
     nickname,
     payment_option: "MOM",
@@ -267,6 +270,7 @@ async function initiateBridgeDisbursement({ loan, user, req }) {
     accepted,
     transactionId,
     disbursedAmount,
+    bridgeAmount,
     detectedNetwork,
     providerCode,
     callbackUrl,

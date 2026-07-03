@@ -14,6 +14,8 @@ const LIFECYCLE_KEYS = new Set([
   'max_extension_days_per_request',
   'max_extension_count',
   'max_overdue_days_for_extension',
+  'overdue_fee_daily_pct',
+  'upfront_deduction_pct',
   'reserve_release_days',
   'dashboard_refresh_interval_seconds',
   'dashboard_cache_ttl_seconds',
@@ -38,6 +40,18 @@ const FEE_RATE_KEY_MAP = {
   service_fee_30_days:     { durationDays: 30, column: 'serviceFeePct' },
   admin_fee_30_days:       { durationDays: 30, column: 'administrationFeePct' },
   commitment_fee_30_days:  { durationDays: 30, column: 'commitmentFeePct' },
+  interest_rate_60_days:   { durationDays: 60, column: 'interestRate' },
+  service_fee_60_days:     { durationDays: 60, column: 'serviceFeePct' },
+  admin_fee_60_days:       { durationDays: 60, column: 'administrationFeePct' },
+  commitment_fee_60_days:  { durationDays: 60, column: 'commitmentFeePct' },
+  interest_rate_90_days:   { durationDays: 90, column: 'interestRate' },
+  service_fee_90_days:     { durationDays: 90, column: 'serviceFeePct' },
+  admin_fee_90_days:       { durationDays: 90, column: 'administrationFeePct' },
+  commitment_fee_90_days:  { durationDays: 90, column: 'commitmentFeePct' },
+  interest_rate_180_days:  { durationDays: 180, column: 'interestRate' },
+  service_fee_180_days:    { durationDays: 180, column: 'serviceFeePct' },
+  admin_fee_180_days:      { durationDays: 180, column: 'administrationFeePct' },
+  commitment_fee_180_days: { durationDays: 180, column: 'commitmentFeePct' },
 };
 
 // After saving a fee-rate AppConfig key, mirror the value to the LoanTerm row
@@ -105,9 +119,17 @@ async function getRatesForTerm(termNumber, loanTermRow) {
 router.get('/loan-calculations', async (req, res) => {
   try {
     const loanTerms = await LoanTerm.getEnabledTerms();
+    const [upfrontCfg, overdueCfg] = await Promise.all([
+      AppConfig.getConfig('upfront_deduction_pct').catch(() => null),
+      AppConfig.getConfig('overdue_fee_daily_pct').catch(() => null),
+    ]);
     const loanParams = {};
     await Promise.all(loanTerms.map(async (term) => {
-      loanParams[`${term.durationDays}_days`] = await getRatesForTerm(term.durationDays, term);
+      loanParams[`${term.durationDays}_days`] = {
+        ...(await getRatesForTerm(term.durationDays, term)),
+        upfrontDeductionPct: upfrontCfg ? Number(upfrontCfg.value) : 20,
+        overdueFeePct: overdueCfg ? Number(overdueCfg.value) : 2,
+      };
     }));
     res.json({ success: true, data: loanParams });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to fetch loan calculation parameters' }); }
@@ -120,8 +142,12 @@ router.get('/loan-calculations/:termDays', async (req, res) => {
     const loanTerm = await LoanTerm.findOne({ where: { durationDays: termNumber, enabled: true } });
     if (!loanTerm) return res.status(404).json({ success: false, message: `Loan term for ${termNumber} days not found or not enabled` });
     const rates = await getRatesForTerm(termNumber, loanTerm);
-    const upfrontCfg = await AppConfig.getConfig('upfront_deduction_pct').catch(() => null);
+    const [upfrontCfg, overdueCfg] = await Promise.all([
+      AppConfig.getConfig('upfront_deduction_pct').catch(() => null),
+      AppConfig.getConfig('overdue_fee_daily_pct').catch(() => null),
+    ]);
     rates.upfrontDeductionPct = upfrontCfg ? Number(upfrontCfg.value) : 20;
+    rates.overdueFeePct = overdueCfg ? Number(overdueCfg.value) : 2;
     res.json({ success: true, data: rates });
   } catch (err) { res.status(500).json({ success: false, message: 'Failed to fetch loan calculation parameters' }); }
 });
@@ -288,7 +314,7 @@ router.put('/admin/bulk-update', adminAuth, async (req, res) => {
 router.put('/admin/loan-calculations/:termDays', adminAuth, async (req, res) => {
   try {
     const termNumber = parseInt(req.params.termDays);
-    if (![7, 14, 30].includes(termNumber)) return res.status(400).json({ success: false, message: 'Invalid term. Must be 7, 14, or 30 days' });
+    if (![7, 14, 30, 60, 90, 180].includes(termNumber)) return res.status(400).json({ success: false, message: 'Invalid term. Must be 7, 14, 30, 60, 90, or 180 days' });
 
     const { interestRate, serviceFee, adminFee, commitmentFee } = req.body;
     const updates = [];
@@ -303,6 +329,7 @@ router.put('/admin/loan-calculations/:termDays', adminAuth, async (req, res) => 
     for (const u of updates) {
       await AppConfig.updateConfig(u.key, u.value, req.admin.id);
       maybeBustCache(u.key);
+      await syncFeeRateToLoanTerm(u.key, u.value);
       ws.broadcastSystemConfigUpdate(u.key, u.value);
     }
     res.json({ success: true, message: `Successfully updated loan calculation parameters for ${termNumber} days`, data: { modifiedCount: updates.length } });

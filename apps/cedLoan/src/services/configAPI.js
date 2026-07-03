@@ -92,6 +92,8 @@ class ConfigAPI {
         serviceFee: Number(cfg[`service_fee_${termDays}_days`] || 0),
         adminFee: Number(cfg[`admin_fee_${termDays}_days`] || 0),
         commitmentFee: Number(cfg[`commitment_fee_${termDays}_days`] || 0),
+        upfrontDeductionPct: Number(cfg.upfront_deduction_pct || 20),
+        overdueFeePct: Number(cfg.overdue_fee_daily_pct || 2),
       });
 
       return {
@@ -126,6 +128,8 @@ class ConfigAPI {
           serviceFee: Number(cfg[`service_fee_${termDays}_days`] || 0),
           adminFee: Number(cfg[`admin_fee_${termDays}_days`] || 0),
           commitmentFee: Number(cfg[`commitment_fee_${termDays}_days`] || 0),
+          upfrontDeductionPct: Number(cfg.upfront_deduction_pct || 20),
+          overdueFeePct: Number(cfg.overdue_fee_daily_pct || 2),
         },
       };
     }
@@ -246,6 +250,7 @@ class ConfigAPI {
           },
           totalAmount,
           repaymentAmount,
+          overdueFeePct: params.overdueFeePct || 2,
           breakdown: {
             interestRate:      params.interestRate   || 0,
             serviceFeeRate:    params.serviceFee     || 0,

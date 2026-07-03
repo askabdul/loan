@@ -60,6 +60,10 @@ const LoanRateCalculation = () => {
   });
   const [calculationResult, setCalculationResult] = useState(null);
   const [savingAll, setSavingAll] = useState(false);
+  const [globalLoanConfig, setGlobalLoanConfig] = useState({
+    upfrontDeductionPct: 20,
+    overdueFeePct: 2,
+  });
 
   // All useEffect hooks must also be declared before conditional returns
   useEffect(() => {
@@ -69,7 +73,7 @@ const LoanRateCalculation = () => {
 
   useEffect(() => {
     calculateLoan();
-  }, [calculatorData, rates]);
+  }, [calculatorData, rates, globalLoanConfig]);
 
   // Check permissions after all hooks are declared
   if (!hasMenuAccess('appConfiguration') || !hasSubMenuAccess('appConfiguration', 'loanRateCalculation')) {
@@ -94,9 +98,12 @@ const LoanRateCalculation = () => {
     try {
       setLoading(true);
       
-      // Fetch loan terms directly from the database
-      const response = await apiService.get('/loan-terms/admin');
+      const [response, configResponse] = await Promise.all([
+        apiService.get('/loan-terms/admin'),
+        apiService.getConfiguration(),
+      ]);
       const loanTermsData = extractLoanTerms(response);
+      const configMap = configResponse.config || {};
       setLoanTerms(loanTermsData);
       
       // Initialize rates object
@@ -106,13 +113,18 @@ const LoanRateCalculation = () => {
       loanTermsData.forEach(term => {
         const termDays = Number(term.durationDays);
         loanRates[termDays] = {
-          interestRate: Number(term.interestRate) || 0,
-          processingFee: mapFeeValue(term, ['administrationFeePct', 'processingFeeRate']),
-          serviceFee: mapFeeValue(term, ['serviceFeePct', 'serviceFeeRate']),
-          commitmentFee: mapFeeValue(term, ['commitmentFeePct', 'commitmentFeeRate']),
-          lateFee: 0, // Not stored in LoanTerm model, keeping for compatibility
+          interestRate: Number(configMap[`interest_rate_${termDays}_days`] ?? term.interestRate) || 0,
+          processingFee: Number(configMap[`admin_fee_${termDays}_days`] ?? mapFeeValue(term, ['administrationFeePct', 'processingFeeRate'])),
+          serviceFee: Number(configMap[`service_fee_${termDays}_days`] ?? mapFeeValue(term, ['serviceFeePct', 'serviceFeeRate'])),
+          commitmentFee: Number(configMap[`commitment_fee_${termDays}_days`] ?? mapFeeValue(term, ['commitmentFeePct', 'commitmentFeeRate'])),
+          lateFee: Number(configMap.overdue_fee_daily_pct || 2),
           enabled: Boolean(term.enabled)
         };
+      });
+
+      setGlobalLoanConfig({
+        upfrontDeductionPct: Number(configMap.upfront_deduction_pct || 20),
+        overdueFeePct: Number(configMap.overdue_fee_daily_pct || 2),
       });
       
       // Ensure we have entries for common terms even if not in database
@@ -124,7 +136,7 @@ const LoanRateCalculation = () => {
             processingFee: 0,
             serviceFee: 0,
             commitmentFee: 0,
-            lateFee: 0,
+            lateFee: Number(configMap.overdue_fee_daily_pct || 2),
             enabled: false
           };
         }
@@ -217,26 +229,17 @@ const LoanRateCalculation = () => {
       const key = `${term}_${field}`;
       const value = tempValues[key];
       
-      // Find the loan term by duration
-      const loanTerm = loanTerms.find(t => t.durationDays === parseInt(term));
-      if (!loanTerm) {
-        showMessage('error', 'Loan term not found');
-        return;
-      }
-      
-      // Map field names to LoanTerm model fields
-      const fieldMapping = {
-        'interestRate': 'interestRate',
-        'processingFee': 'administrationFeePct',
-        'serviceFee': 'serviceFeePct',
-        'commitmentFee': 'commitmentFeePct'
+      const configKeyMapping = {
+        interestRate: `interest_rate_${term}_days`,
+        processingFee: `admin_fee_${term}_days`,
+        serviceFee: `service_fee_${term}_days`,
+        commitmentFee: `commitment_fee_${term}_days`,
+        lateFee: 'overdue_fee_daily_pct',
       };
-      
-      const updateData = {
-        [fieldMapping[field]]: value
-      };
-      
-      await apiService.updateLoanTerm(loanTerm.id, updateData);
+
+      await apiService.updateConfiguration([
+        { key: configKeyMapping[field], value },
+      ]);
       
       setRates({
         ...rates,
@@ -249,8 +252,7 @@ const LoanRateCalculation = () => {
       setEditMode({ ...editMode, [key]: false });
       showMessage('success', `${field} for ${term} days updated successfully`);
       
-      // Refresh loan terms data
-      fetchLoanTerms();
+      fetchLoanRates();
     } catch (error) {
       console.error('Error updating rate:', error);
       showMessage('error', `Failed to update ${field} for ${term} days`);
@@ -268,31 +270,28 @@ const LoanRateCalculation = () => {
     try {
       setSavingAll(true);
       
-      // Prepare loan term updates
-      const loanTermUpdates = [];
+      const configUpdates = [];
       
       Object.keys(rates).forEach(term => {
         const termRates = rates[term];
         
-        // Find the loan term by duration
-        const loanTerm = loanTerms.find(t => t.durationDays === parseInt(term));
-        if (loanTerm) {
-          const updateData = {
-            interestRate: termRates.interestRate,
-            administrationFeePct: termRates.processingFee,
-            serviceFeePct: termRates.serviceFee,
-            commitmentFeePct: termRates.commitmentFee
-            // Note: lateFee is not stored in LoanTerm model
-          };
-          
-          loanTermUpdates.push(
-            apiService.updateLoanTerm(loanTerm.id, updateData)
+        const loanTerm = loanTerms.find(t => Number(t.durationDays) === parseInt(term));
+        if (loanTerm || [7, 14, 30].includes(Number(term))) {
+          configUpdates.push(
+            { key: `interest_rate_${term}_days`, value: termRates.interestRate },
+            { key: `admin_fee_${term}_days`, value: termRates.processingFee },
+            { key: `service_fee_${term}_days`, value: termRates.serviceFee },
+            { key: `commitment_fee_${term}_days`, value: termRates.commitmentFee },
           );
         }
       });
-      
-      // Update all loan terms
-      await Promise.all(loanTermUpdates);
+
+      configUpdates.push({
+        key: 'overdue_fee_daily_pct',
+        value: globalLoanConfig.overdueFeePct,
+      });
+
+      await apiService.updateConfiguration(configUpdates);
       
       // Clear any edit modes
       setEditMode({});
@@ -300,8 +299,7 @@ const LoanRateCalculation = () => {
       
       showMessage('success', 'All loan rates and fees saved successfully!');
       
-      // Refresh loan terms data
-      fetchLoanTerms();
+      fetchLoanRates();
     } catch (error) {
       console.error('Error saving all rates:', error);
       showMessage('error', 'Failed to save some rates. Please try again.');
@@ -320,12 +318,17 @@ const LoanRateCalculation = () => {
     
     if (!termRates) return;
     
-    const interestAmount = (amount * termRates.interestRate) / 100;
-    const processingFeeAmount = (amount * termRates.processingFee) / 100;
-    const serviceFeeAmount = (amount * termRates.serviceFee) / 100;
-    const commitmentFeeAmount = (amount * termRates.commitmentFee) / 100;
-    const totalAmount = amount + interestAmount + processingFeeAmount + serviceFeeAmount + commitmentFeeAmount;
-    const lateFeeAmount = (amount * termRates.lateFee) / 100;
+    const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+    const interestAmount = r2((amount * termRates.interestRate) / 100);
+    const processingFeeAmount = r2((amount * termRates.processingFee) / 100);
+    const serviceFeeAmount = r2((amount * termRates.serviceFee) / 100);
+    const commitmentFeeAmount = r2((amount * termRates.commitmentFee) / 100);
+    const totalFees = r2(interestAmount + processingFeeAmount + serviceFeeAmount + commitmentFeeAmount);
+    const upfrontFee = r2((amount * globalLoanConfig.upfrontDeductionPct) / 100);
+    const amountReceived = r2(amount - upfrontFee);
+    const totalAmount = r2(amount + totalFees);
+    const repaymentAmount = r2(totalAmount - upfrontFee);
+    const lateFeeAmount = r2((repaymentAmount * globalLoanConfig.overdueFeePct) / 100);
     
     setCalculationResult({
       principal: amount,
@@ -333,7 +336,11 @@ const LoanRateCalculation = () => {
       processingFeeAmount,
       serviceFeeAmount,
       commitmentFeeAmount,
+      totalFees,
+      upfrontFee,
+      amountReceived,
       totalAmount,
+      repaymentAmount,
       lateFeeAmount,
       term
     });
@@ -474,11 +481,16 @@ const LoanRateCalculation = () => {
             <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-xs">
               <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Calculation Result</p>
               {[
-                { label: 'Principal', value: `GHS ${calculationResult.principal.toLocaleString()}` },
+                { label: 'Requested Principal', value: `GHS ${calculationResult.principal.toLocaleString()}` },
                 { label: `Interest (${rates[calculationResult.term].interestRate}%)`, value: `GHS ${calculationResult.interestAmount.toLocaleString()}` },
-                { label: `Processing (${rates[calculationResult.term].processingFee}%)`, value: `GHS ${calculationResult.processingFeeAmount.toLocaleString()}` },
+                { label: `Admin (${rates[calculationResult.term].processingFee}%)`, value: `GHS ${calculationResult.processingFeeAmount.toLocaleString()}` },
                 { label: `Service (${rates[calculationResult.term].serviceFee}%)`, value: `GHS ${calculationResult.serviceFeeAmount.toLocaleString()}` },
                 { label: `Commitment (${rates[calculationResult.term].commitmentFee}%)`, value: `GHS ${calculationResult.commitmentFeeAmount.toLocaleString()}` },
+                { label: 'Total Fees', value: `GHS ${calculationResult.totalFees.toLocaleString()}` },
+                { label: `Upfront Deduction (${globalLoanConfig.upfrontDeductionPct}%)`, value: `GHS ${calculationResult.upfrontFee.toLocaleString()}` },
+                { label: 'Customer Receives', value: `GHS ${calculationResult.amountReceived.toLocaleString()}` },
+                { label: 'Total Obligation', value: `GHS ${calculationResult.totalAmount.toLocaleString()}` },
+                { label: `Daily Overdue (${globalLoanConfig.overdueFeePct}%)`, value: `GHS ${calculationResult.lateFeeAmount.toLocaleString()}` },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-center">
                   <span className="text-gray-500">{label}</span>
@@ -486,8 +498,8 @@ const LoanRateCalculation = () => {
                 </div>
               ))}
               <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
-                <span className="font-bold text-gray-700">Total</span>
-                <span className="font-bold text-blue-600">GHS {calculationResult.totalAmount.toLocaleString()}</span>
+                <span className="font-bold text-gray-700">Customer Repays</span>
+                <span className="font-bold text-blue-600">GHS {calculationResult.repaymentAmount.toLocaleString()}</span>
               </div>
             </div>
           )}
