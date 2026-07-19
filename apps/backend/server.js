@@ -271,5 +271,5 @@ const startServer = async () => {
 // Start the server
 startServer();
 
-// Export app, websocketService and server for use in routing *(routes)
+// Export app, websocketService and server for use in routes
 module.exports = { app, websocketService, server };
