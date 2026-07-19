@@ -31,11 +31,8 @@ const PORT = process.env.PORT || 5000;
   }
 });
 
-// Security middleware
-app.use(helmet());
-
 // CORS configuration
-const allowedOrigins = [
+const defaultAllowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:3002",
@@ -45,17 +42,54 @@ const allowedOrigins = [
   "https://cedloan-admin.netlify.app",
 ];
 
+const allowedOrigins = [
+  ...defaultAllowedOrigins,
+  ...(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+
+  if (process.env.NODE_ENV !== "production") {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  }
+
+  return false;
+};
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (isAllowedOrigin(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Vary", "Origin");
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    );
+    res.header(
+      "Access-Control-Allow-Headers",
+      req.headers["access-control-request-headers"] ||
+        "Content-Type, Authorization, X-Requested-With",
+    );
+  }
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(isAllowedOrigin(origin) ? 204 : 403);
+  }
+
+  next();
+});
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no Origin header (mobile apps, curl, Postman)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    if (process.env.NODE_ENV !== "production") {
-      // In dev, allow any localhost origin regardless of port
-      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-        return callback(null, true);
-      }
-    }
+    if (isAllowedOrigin(origin)) return callback(null, true);
     callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
   credentials: true,
@@ -67,6 +101,9 @@ app.use(cors(corsOptions));
 
 // Handle preflight requests
 app.options("*", cors(corsOptions));
+
+// Security middleware
+app.use(helmet());
 
 // Rate limiting - more lenient for development. This must run after CORS so
 // rejected API requests still include the appropriate CORS response headers.
