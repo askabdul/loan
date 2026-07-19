@@ -236,7 +236,7 @@ app.use("*", (req, res) => {
       id: require("crypto").randomBytes(8).toString("hex").toUpperCase(),
     },
   });
-});
+})
 
 // Make websocket service available to routes
 app.set("websocketService", websocketService);
@@ -271,5 +271,5 @@ const startServer = async () => {
 // Start the server
 startServer();
 
-// Export app, websocketService and server for use in routes
+// Export app, websocketService and server for use in routing *(routes)
 module.exports = { app, websocketService, server };
