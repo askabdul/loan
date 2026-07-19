@@ -18,6 +18,10 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+// Railway/Render/Netlify-style platforms sit behind a proxy. This lets
+// express-rate-limit use X-Forwarded-For safely instead of throwing at runtime.
+app.set("trust proxy", 1);
+
 // Ensure all upload directories exist at startup
 [
   "uploads/profile-images",
@@ -48,14 +52,17 @@ const allowedOrigins = [
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
-];
+].map((origin) => origin.replace(/\/$/, ""));
 
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
-  if (allowedOrigins.includes(origin)) return true;
+  const normalizedOrigin = origin.replace(/\/$/, "");
+  if (allowedOrigins.includes(normalizedOrigin)) return true;
 
   if (process.env.NODE_ENV !== "production") {
-    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(
+      normalizedOrigin,
+    );
   }
 
   return false;
