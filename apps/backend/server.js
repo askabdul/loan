@@ -34,20 +34,6 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmet());
 
-// Rate limiting - more lenient for development
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === "production" ? 500 : 1000,
-  message: "Too many requests from this IP, please try again later.",
-  skip: (req) => {
-    return (
-      req.path === "/api/health" ||
-      process.env.NODE_ENV !== "production"
-    );
-  },
-});
-app.use("/api/", limiter);
-
 // CORS configuration
 const allowedOrigins = [
   "http://localhost:3000",
@@ -81,6 +67,22 @@ app.use(cors(corsOptions));
 
 // Handle preflight requests
 app.options("*", cors(corsOptions));
+
+// Rate limiting - more lenient for development. This must run after CORS so
+// rejected API requests still include the appropriate CORS response headers.
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === "production" ? 500 : 1000,
+  message: "Too many requests from this IP, please try again later.",
+  skip: (req) => {
+    return (
+      req.method === "OPTIONS" ||
+      req.path === "/api/health" ||
+      process.env.NODE_ENV !== "production"
+    );
+  },
+});
+app.use("/api/", limiter);
 
 // Initialize WebSocket service
 websocketService.initialize(server);
